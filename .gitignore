@@ -1,0 +1,7 @@
+# 开发过程文件（方案、改前备份、测试页）只留本机
+docs/plans/
+
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

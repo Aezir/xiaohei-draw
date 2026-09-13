@@ -1,0 +1,14 @@
+{
+    "name": "xbdraw-image-proxy",
+    "version": "3.0.0",
+    "type": "commonjs",
+    "main": "index.js",
+    "description": "NovelAI request proxy for XBDraw.",
+    "private": true,
+    "scripts": {
+        "test": "node --test tests/"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

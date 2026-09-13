@@ -1,0 +1,39 @@
+{
+  "source": "Aezir/nai-gallery index.html",
+  "commit": "ed8458d9a17383228f22d88fc9824cac5829d1b9",
+  "schema": 2,
+  "blocks": {
+    "sync-core": {
+      "file": "sync-core.js",
+      "sha256": "3133c7abf8417be6277f13af867b0b2bfd8420a1cb0211a3c40eb41b35c8ef61",
+      "lines": [
+        3910,
+        4102
+      ]
+    },
+    "nai-meta": {
+      "file": "nai-meta.js",
+      "sha256": "eb8fae4966875c7e58971d6d1b957dd7751e4d422589f87637b5332c1420c491",
+      "lines": [
+        1715,
+        1794
+      ]
+    },
+    "page-constants": {
+      "file": "page-constants.js",
+      "sha256": "a76c1aa30929ac1cc9d35505c8742b6acd01fbfbb8d54732678035cbc7154af1",
+      "lines": [
+        4111,
+        4186
+      ]
+    },
+    "prompt-highlight": {
+      "file": "prompt-highlight.js",
+      "sha256": "611928ef7d8c62b99b5ab8dbf38306c098a1051d5eb0a5b5903dd27d29c1b705",
+      "lines": [
+        1926,
+        2040
+      ]
+    }
+  }
+}

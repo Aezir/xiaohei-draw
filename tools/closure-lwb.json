@@ -1,0 +1,182 @@
+{
+  "files": [
+    "core/after-ai-gate.js",
+    "core/constants.js",
+    "core/debug-core.js",
+    "core/event-manager.js",
+    "core/iframe-messaging.js",
+    "core/server-storage.js",
+    "core/slash-command.js",
+    "core/storage-file.js",
+    "core/variable-path.js",
+    "core/wrapper-inline.js",
+    "libs/fflate.mjs",
+    "libs/js-yaml.mjs",
+    "libs/msgpack.mjs",
+    "modules/agent-core/adapters/request-inspection.js",
+    "modules/agent-core/config.js",
+    "modules/agent-core/dist/agent-core-browser.js",
+    "modules/agent-core/provider-resolution.js",
+    "modules/agent-core/reasoning-capabilities.js",
+    "modules/agent-core/reasoning-config.js",
+    "modules/agent-core/runtime/loose-tool-arguments.js",
+    "modules/agent-core/runtime/protocol.js",
+    "modules/agent-core/settings-repository.js",
+    "modules/agent-core/tavily-search.js",
+    "modules/agent-core/ui/settings-markup.js",
+    "modules/agent-core/ui/settings-panel.js",
+    "modules/draw/providers/comfyui/comfy-draw.js",
+    "modules/draw/providers/comfyui/comfy-prompts.js",
+    "modules/draw/providers/comfyui/compiler.js",
+    "modules/draw/providers/comfyui/floating-panel.js",
+    "modules/draw/providers/novelai/cloud-presets.js",
+    "modules/draw/providers/novelai/compiler.js",
+    "modules/draw/providers/novelai/floating-panel.js",
+    "modules/draw/providers/novelai/novel-backend-job-result.js",
+    "modules/draw/providers/novelai/novel-character-learning.js",
+    "modules/draw/providers/novelai/novel-draw.js",
+    "modules/draw/providers/novelai/novel-image-response.js",
+    "modules/draw/providers/novelai/novel-model-capabilities.js",
+    "modules/draw/providers/novelai/novel-prompt-import.js",
+    "modules/draw/providers/novelai/novel-prompt-migration.js",
+    "modules/draw/providers/novelai/novel-prompts.js",
+    "modules/draw/providers/novelai/novel-request-config.js",
+    "modules/draw/providers/novelai/novel-v5-request.js",
+    "modules/draw/providers/novelai/novel-v5-stream.js",
+    "modules/draw/providers/sd-webui/compiler.js",
+    "modules/draw/providers/sd-webui/floating-panel.js",
+    "modules/draw/providers/sd-webui/sd-draw.js",
+    "modules/draw/providers/sd-webui/sd-prompts.js",
+    "modules/draw/shared/agent-settings-surface.js",
+    "modules/draw/shared/backend-image-jobs.js",
+    "modules/draw/shared/character-enabled-control.js",
+    "modules/draw/shared/character-prompts.js",
+    "modules/draw/shared/character-selection.js",
+    "modules/draw/shared/chat-message-image-markup.js",
+    "modules/draw/shared/chat-message-images.js",
+    "modules/draw/shared/confirmable-chat-save.js",
+    "modules/draw/shared/danbooru-local-db.js",
+    "modules/draw/shared/draw-agent-runtime.js",
+    "modules/draw/shared/draw-agent.js",
+    "modules/draw/shared/draw-common.js",
+    "modules/draw/shared/draw-run-activity.js",
+    "modules/draw/shared/draw-run-adoption.js",
+    "modules/draw/shared/draw-run-client.js",
+    "modules/draw/shared/draw-run-controls.js",
+    "modules/draw/shared/draw-run-coordinator.js",
+    "modules/draw/shared/draw-run-debug.js",
+    "modules/draw/shared/draw-run-identifiers.js",
+    "modules/draw/shared/draw-run-markers.js",
+    "modules/draw/shared/draw-run-production.js",
+    "modules/draw/shared/draw-run-recovery-runtime.js",
+    "modules/draw/shared/draw-run-recovery.js",
+    "modules/draw/shared/draw-run-ui-state.js",
+    "modules/draw/shared/draw-settings.js",
+    "modules/draw/shared/gallery-cache.js",
+    "modules/draw/shared/generated-image-runtime.js",
+    "modules/draw/shared/generation-fingerprint.js",
+    "modules/draw/shared/image-job-delivery-target.js",
+    "modules/draw/shared/image-job-reattach.js",
+    "modules/draw/shared/image-job-recovery-executor.js",
+    "modules/draw/shared/image-job-recovery-runtime.js",
+    "modules/draw/shared/image-marker-syntax.js",
+    "modules/draw/shared/page-farewell.js",
+    "modules/draw/shared/pending-image-jobs.js",
+    "modules/draw/shared/prompt-template-migration.js",
+    "modules/draw/shared/recoverable-image-jobs.js",
+    "modules/draw/shared/scene-placement.js",
+    "modules/draw/shared/scene-plan-contract.js",
+    "modules/draw/shared/scene-plan-tool.js",
+    "modules/draw/shared/scene-planner-chain-view.js",
+    "modules/draw/shared/scene-planner-debug.js",
+    "modules/draw/shared/scene-planner-error-ui.js",
+    "modules/draw/shared/scene-planner-executor.js",
+    "modules/draw/shared/scene-planner-frame.js",
+    "modules/draw/shared/scene-planner-presets.js",
+    "modules/draw/shared/scene-planner-profile.js",
+    "modules/draw/shared/scene-planner-templates.js",
+    "modules/draw/shared/scene-planner.js",
+    "modules/draw/shared/scene-prompt-expansion.js",
+    "modules/draw/shared/scene-slot-dom.js",
+    "modules/draw/shared/scene-source.js",
+    "modules/draw/shared/serial-image-request-queue.js",
+    "modules/draw/shared/worldbook-processor.js",
+    "modules/iframe-renderer.js",
+    "modules/variables/var-commands.js",
+    "shared/common/generate-interceptor.js",
+    "shared/host-llm/chat-completions/client.js",
+    "shared/host-llm/chat-completions/sse.js",
+    "shared/host-llm/model-family.js",
+    "widgets/message-toolbar.js"
+  ],
+  "missing": [],
+  "dynamicNonLiteral": [],
+  "external": {
+    "../../../../../script.js": [
+      "core\\event-manager.js",
+      "core\\server-storage.js",
+      "modules\\iframe-renderer.js"
+    ],
+    "../../../../utils.js": [
+      "core\\server-storage.js"
+    ],
+    "../../../../../../extensions.js": [
+      "modules\\draw\\shared\\chat-message-images.js",
+      "modules\\draw\\shared\\gallery-cache.js",
+      "modules\\draw\\shared\\draw-run-controls.js",
+      "modules\\draw\\shared\\draw-common.js",
+      "modules\\draw\\shared\\image-job-recovery-runtime.js",
+      "modules\\draw\\shared\\draw-run-recovery-runtime.js"
+    ],
+    "../../../../extensions.js": [
+      "core\\after-ai-gate.js",
+      "modules\\iframe-renderer.js",
+      "core\\slash-command.js"
+    ],
+    "../../../../../../../extensions.js": [
+      "modules\\draw\\providers\\novelai\\novel-draw.js",
+      "modules\\draw\\providers\\novelai\\floating-panel.js",
+      "modules\\draw\\providers\\sd-webui\\sd-draw.js",
+      "modules\\draw\\providers\\sd-webui\\floating-panel.js",
+      "modules\\draw\\providers\\comfyui\\comfy-draw.js",
+      "modules\\draw\\providers\\comfyui\\floating-panel.js"
+    ],
+    "../../../../../../../utils.js": [
+      "modules\\draw\\providers\\novelai\\novel-draw.js",
+      "modules\\draw\\providers\\sd-webui\\sd-draw.js",
+      "modules\\draw\\providers\\comfyui\\comfy-draw.js"
+    ],
+    "../../../../../../../../script.js": [
+      "modules\\draw\\providers\\novelai\\novel-draw.js",
+      "modules\\draw\\providers\\sd-webui\\sd-draw.js",
+      "modules\\draw\\providers\\comfyui\\comfy-draw.js"
+    ],
+    "../../../../../../utils.js": [
+      "modules\\draw\\shared\\gallery-cache.js"
+    ],
+    "../../../../../../../script.js": [
+      "modules\\draw\\shared\\draw-agent.js",
+      "modules\\draw\\shared\\scene-prompt-expansion.js",
+      "modules\\draw\\shared\\agent-settings-surface.js",
+      "modules\\draw\\shared\\draw-run-controls.js",
+      "modules\\draw\\shared\\draw-common.js",
+      "modules\\draw\\shared\\image-job-recovery-runtime.js",
+      "modules\\draw\\shared\\draw-run-recovery-runtime.js"
+    ],
+    "undici": [
+      "modules\\agent-core\\dist\\agent-core-browser.js"
+    ],
+    "node:buffer": [
+      "modules\\agent-core\\dist\\agent-core-browser.js"
+    ],
+    "../../../../../extensions.js": [
+      "modules\\variables\\var-commands.js"
+    ],
+    "../../../../../variables.js": [
+      "modules\\variables\\var-commands.js"
+    ],
+    "../../../../../../../scripts/world-info.js": [
+      "modules\\draw\\shared\\scene-planner.js"
+    ]
+  }
+}

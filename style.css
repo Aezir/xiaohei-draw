@@ -1,0 +1,22 @@
+.xbdraw-settings .xbdraw-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 1.75rem;
+    margin-top: 6px;
+}
+
+.xbdraw-settings .xbdraw-row select {
+    width: auto;
+    max-width: 9rem;
+    margin: 0;
+}
+
+.xbdraw-settings .xbdraw-row .menu_button {
+    margin-left: auto;
+}
+
+.xbdraw-settings .disabled-control {
+    opacity: .55;
+    cursor: not-allowed;
+}

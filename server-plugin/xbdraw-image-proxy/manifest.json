@@ -1,0 +1,7 @@
+{
+    "id": "xbdraw-image-proxy",
+    "name": "XBDraw Image Proxy",
+    "version": "3.0.0",
+    "author": "XBDraw (based on LittleWhiteBox)",
+    "description": "SillyTavern 后端插件：为小黑生图（XBDraw）代理转发 NovelAI 请求（生图、V5 流、连接测试、氛围编码、订阅档位查询）。"
+}

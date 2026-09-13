@@ -1,0 +1,12 @@
+{
+    "display_name": "小黑生图",
+    "loading_order": 11,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "biex (original), extracted as XBDraw",
+    "version": "0.1.0",
+    "homePage": "https://github.com/RT15548/LittleWhiteBox",
+    "generate_interceptor": "xbdrawGenerateInterceptor"
+}

@@ -1,0 +1,173 @@
+{
+  "files": [
+    "core/after-ai-gate.js",
+    "core/constants.js",
+    "core/debug-core.js",
+    "core/event-manager.js",
+    "core/iframe-messaging.js",
+    "core/server-storage.js",
+    "core/storage-file.js",
+    "core/variable-path.js",
+    "index.js",
+    "libs/fflate.mjs",
+    "libs/js-yaml.mjs",
+    "libs/msgpack.mjs",
+    "modules/agent-core/adapters/request-inspection.js",
+    "modules/agent-core/config.js",
+    "modules/agent-core/dist/agent-core-browser.js",
+    "modules/agent-core/provider-resolution.js",
+    "modules/agent-core/reasoning-capabilities.js",
+    "modules/agent-core/reasoning-config.js",
+    "modules/agent-core/runtime/loose-tool-arguments.js",
+    "modules/agent-core/runtime/protocol.js",
+    "modules/agent-core/settings-repository.js",
+    "modules/agent-core/tavily-search.js",
+    "modules/agent-core/ui/settings-markup.js",
+    "modules/agent-core/ui/settings-panel.js",
+    "modules/draw/providers/novelai/cloud-presets.js",
+    "modules/draw/providers/novelai/compiler.js",
+    "modules/draw/providers/novelai/float-fields.js",
+    "modules/draw/providers/novelai/floating-panel.js",
+    "modules/draw/providers/novelai/gallery-preset-import.js",
+    "modules/draw/providers/novelai/novel-anlas-pricing.js",
+    "modules/draw/providers/novelai/novel-character-learning.js",
+    "modules/draw/providers/novelai/novel-cost-rule.js",
+    "modules/draw/providers/novelai/novel-draw.js",
+    "modules/draw/providers/novelai/novel-edit-regenerate.js",
+    "modules/draw/providers/novelai/novel-effective-size.js",
+    "modules/draw/providers/novelai/novel-image-response.js",
+    "modules/draw/providers/novelai/novel-model-capabilities.js",
+    "modules/draw/providers/novelai/novel-prompt-import.js",
+    "modules/draw/providers/novelai/novel-prompt-migration.js",
+    "modules/draw/providers/novelai/novel-prompts.js",
+    "modules/draw/providers/novelai/novel-request-config.js",
+    "modules/draw/providers/novelai/novel-subscription.js",
+    "modules/draw/providers/novelai/novel-v5-request.js",
+    "modules/draw/providers/novelai/novel-v5-stream.js",
+    "modules/draw/providers/novelai/novel-vibe-api.js",
+    "modules/draw/providers/novelai/novel-vibe-config.js",
+    "modules/draw/providers/novelai/novel-vibe-format.js",
+    "modules/draw/providers/novelai/novel-vibe-generation.js",
+    "modules/draw/providers/novelai/novel-vibe-resolve.js",
+    "modules/draw/providers/novelai/novel-vibe-store.js",
+    "modules/draw/providers/novelai/ui/floating-panel-styles.js",
+    "modules/draw/shared/agent-settings-surface.js",
+    "modules/draw/shared/character-prompts.js",
+    "modules/draw/shared/character-selection.js",
+    "modules/draw/shared/chat-image-card.js",
+    "modules/draw/shared/chat-image-gestures.js",
+    "modules/draw/shared/chat-message-image-markup.js",
+    "modules/draw/shared/chat-message-images.js",
+    "modules/draw/shared/danbooru-local-db.js",
+    "modules/draw/shared/draw-agent-runtime.js",
+    "modules/draw/shared/draw-agent.js",
+    "modules/draw/shared/draw-common.js",
+    "modules/draw/shared/draw-settings.js",
+    "modules/draw/shared/gallery-cache.js",
+    "modules/draw/shared/gallery-sync/batch-export.js",
+    "modules/draw/shared/gallery-sync/chat-image-export.js",
+    "modules/draw/shared/gallery-sync/credential-store.js",
+    "modules/draw/shared/gallery-sync/gallery-actions.js",
+    "modules/draw/shared/gallery-sync/gallery-client.js",
+    "modules/draw/shared/gallery-sync/idb-kv.js",
+    "modules/draw/shared/gallery-sync/local-store.js",
+    "modules/draw/shared/gallery-sync/preset-from-gallery.js",
+    "modules/draw/shared/gallery-sync/vendor/nai-meta.js",
+    "modules/draw/shared/gallery-sync/vendor/page-constants.js",
+    "modules/draw/shared/gallery-sync/vendor/prompt-highlight.js",
+    "modules/draw/shared/gallery-sync/vendor/sync-core.js",
+    "modules/draw/shared/generated-image-runtime.js",
+    "modules/draw/shared/generation-fingerprint.js",
+    "modules/draw/shared/host-select.js",
+    "modules/draw/shared/image-action-menu.js",
+    "modules/draw/shared/image-lightbox.js",
+    "modules/draw/shared/image-marker-syntax.js",
+    "modules/draw/shared/nai-prompt-highlight.js",
+    "modules/draw/shared/preset-naming.js",
+    "modules/draw/shared/prompt-template-migration.js",
+    "modules/draw/shared/remixicon-loader.js",
+    "modules/draw/shared/scene-placement.js",
+    "modules/draw/shared/scene-plan-contract.js",
+    "modules/draw/shared/scene-plan-tool.js",
+    "modules/draw/shared/scene-planner-debug.js",
+    "modules/draw/shared/scene-planner-error-ui.js",
+    "modules/draw/shared/scene-planner-executor.js",
+    "modules/draw/shared/scene-planner-frame.js",
+    "modules/draw/shared/scene-planner-presets.js",
+    "modules/draw/shared/scene-planner-profile.js",
+    "modules/draw/shared/scene-planner-templates.js",
+    "modules/draw/shared/scene-planner.js",
+    "modules/draw/shared/scene-prompt-expansion.js",
+    "modules/draw/shared/scene-slot-dom.js",
+    "modules/draw/shared/scene-source.js",
+    "modules/draw/shared/serial-image-request-queue.js",
+    "modules/draw/shared/worldbook-processor.js",
+    "modules/draw/shared/xb-dialog.js",
+    "modules/draw/shared/xb-theme.js",
+    "modules/variables/var-commands.js",
+    "shared/common/generate-interceptor.js",
+    "shared/host-llm/chat-completions/client.js",
+    "shared/host-llm/chat-completions/sse.js",
+    "shared/host-llm/model-family.js",
+    "widgets/message-toolbar.js"
+  ],
+  "missing": [],
+  "dynamicNonLiteral": [],
+  "external": {
+    "../../../extensions.js": [
+      "index.js"
+    ],
+    "../../../../script.js": [
+      "index.js"
+    ],
+    "../../../../../script.js": [
+      "core\\event-manager.js",
+      "core\\server-storage.js"
+    ],
+    "../../../../../../extensions.js": [
+      "modules\\draw\\shared\\chat-message-images.js",
+      "modules\\draw\\shared\\gallery-cache.js",
+      "modules\\draw\\shared\\draw-common.js"
+    ],
+    "../../../../extensions.js": [
+      "core\\after-ai-gate.js"
+    ],
+    "../../../../../../../extensions.js": [
+      "modules\\draw\\providers\\novelai\\novel-draw.js",
+      "modules\\draw\\providers\\novelai\\floating-panel.js"
+    ],
+    "../../../../../../../utils.js": [
+      "modules\\draw\\providers\\novelai\\novel-draw.js"
+    ],
+    "../../../../../../../../script.js": [
+      "modules\\draw\\providers\\novelai\\novel-draw.js"
+    ],
+    "../../../../utils.js": [
+      "core\\server-storage.js"
+    ],
+    "../../../../../../utils.js": [
+      "modules\\draw\\shared\\gallery-cache.js"
+    ],
+    "../../../../../../../script.js": [
+      "modules\\draw\\shared\\draw-agent.js",
+      "modules\\draw\\shared\\scene-prompt-expansion.js",
+      "modules\\draw\\shared\\agent-settings-surface.js",
+      "modules\\draw\\shared\\draw-common.js"
+    ],
+    "undici": [
+      "modules\\agent-core\\dist\\agent-core-browser.js"
+    ],
+    "node:buffer": [
+      "modules\\agent-core\\dist\\agent-core-browser.js"
+    ],
+    "../../../../../extensions.js": [
+      "modules\\variables\\var-commands.js"
+    ],
+    "../../../../../variables.js": [
+      "modules\\variables\\var-commands.js"
+    ],
+    "../../../../../../../scripts/world-info.js": [
+      "modules\\draw\\shared\\scene-planner.js"
+    ]
+  }
+}
