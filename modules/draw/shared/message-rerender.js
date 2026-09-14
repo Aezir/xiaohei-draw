@@ -29,9 +29,23 @@ export function createMessageRerenderer({
     retryDelayMs = 500,
     maxRetries = 2,
     setTimer = (callback, ms) => setTimeout(callback, ms),
+    // 可选：渲染过程报告给日志。stage: rendered（改写楼层前一刻）/ skipped（在编辑没渲染）/ error /
+    // checked（隔 retryDelayMs 查状态栏，attempt=已补发次数）/ retried（补发了一次）/ superseded（被新一轮渲染接手）。
+    // 回调抛错会被吞掉，不影响渲染；给了回调时，最后一次补发之后也会再查一次（只报告，不再补发）。
+    onRenderReport = null,
 } = {}) {
     const entries = new Map();
     const selfDepth = new Map();
+    let renderSequence = 0;
+
+    function report(data) {
+        if (typeof onRenderReport !== 'function') return;
+        try {
+            onRenderReport({ at: Date.now(), ...data });
+        } catch {
+            /* 日志坏了不影响渲染 */
+        }
+    }
 
     async function emitAsSelf(host, key) {
         selfDepth.set(key, (selfDepth.get(key) || 0) + 1);
@@ -44,14 +58,23 @@ export function createMessageRerenderer({
         }
     }
 
-    function scheduleHeal(key, attempt = 0) {
-        if (attempt >= maxRetries) return;
+    function scheduleHeal(key, attempt = 0, renderId = '') {
+        const checkOnly = attempt >= maxRetries;
+        if (checkOnly && typeof onRenderReport !== 'function') return;
         setTimer(async () => {
             try {
                 // 期间又有新的渲染请求或用户在编辑：交给那一轮
-                if (entries.has(key) || isEditing(key) || !needsRenderRetry(key)) return;
+                if (entries.has(key)) {
+                    report({ renderId, messageId: key, stage: 'superseded', attempt });
+                    return;
+                }
+                if (isEditing(key)) return;
+                const broken = needsRenderRetry(key) === true;
+                report({ renderId, messageId: key, stage: 'checked', attempt, needsRetry: broken });
+                if (!broken || checkOnly) return;
                 await emitAsSelf(await loadHost(), key);
-                scheduleHeal(key, attempt + 1);
+                report({ renderId, messageId: key, stage: 'retried', attempt: attempt + 1 });
+                scheduleHeal(key, attempt + 1, renderId);
             } catch {
                 /* 自愈失败不影响主流程 */
             }
@@ -76,16 +99,34 @@ export function createMessageRerenderer({
 
         let rendered = false;
         let failure = null;
+        let renderId = '';
         try {
             const host = await loadHost();
             if (request && !isEditing(key)) {
+                renderId = `r${++renderSequence}`;
+                report({
+                    renderId,
+                    messageId: key,
+                    stage: 'rendered',
+                    text: request.text === undefined || request.text === null ? request.message?.mes : request.text,
+                });
                 host.updateMessageBlock(key, buildRenderTarget(request.message, request.text));
                 await emitAsSelf(host, key);
                 rendered = true;
-                scheduleHeal(key);
+                scheduleHeal(key, 0, renderId);
+            } else if (request) {
+                report({ renderId: `r${++renderSequence}`, messageId: key, stage: 'skipped' });
             }
         } catch (error) {
             failure = error;
+            if (request) {
+                report({
+                    renderId: renderId || `r${++renderSequence}`,
+                    messageId: key,
+                    stage: 'error',
+                    error: String(error?.message || error),
+                });
+            }
         }
 
         entry.running = false;

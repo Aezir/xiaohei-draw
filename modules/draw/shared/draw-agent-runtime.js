@@ -502,6 +502,8 @@ export async function callDrawScenePlannerAgentRuntime(options = {}) {
             };
             attempts.push(attemptRecord);
             logScenePlannerDiagnostic('请求完成', { ...logContext, ...attemptRecord });
+            // 设置页「日志」要看每一轮（包括通过校验的那一轮）的模型原始回复；放在控制台日志之后，免得刷屏
+            attemptRecord.modelOutput = captureDiagnosticModelOutput(validationResult).modelOutput;
             diagnostic.update({
                 stage: 'request',
                 ...buildInspectionDiagnosticPatch(inspection),

@@ -35,6 +35,7 @@ import {
     syncSharedMessageFilterRulesCache,
 } from '../../shared/draw-settings.js';
 import { getLastDrawAgentDiagnostic } from '../../shared/draw-agent.js';
+import { beginDrawLog, clearDrawLogs, listDrawLogs, setDrawLogMvuBusyProbe, subscribeDrawLogs } from '../../shared/draw-log-store.js';
 import { attachDrawAgentSettingsSurface } from '../../shared/agent-settings-surface.js';
 import { createSerialImageRequestQueue } from '../../shared/serial-image-request-queue.js';
 import { isCharacterEnabled } from '../../shared/character-selection.js';
@@ -382,6 +383,7 @@ const DEFAULT_SETTINGS = {
 let autoBusy = false;
 // MVU 变量卡活动监听（mag_variable_update_started / ended、Mvu.isDuringExtraAnalysis）。
 let mvuActivityTracker = null;
+let drawLogSubscriptionDispose = null;
 let overlayCreated = false;
 let frameReady = false;
 let jsZipLoaded = false;
@@ -1768,6 +1770,7 @@ async function runNovelImageBatch({
     onStateChange,
     onItemReady,
     onItemSettled,
+    drawLog = null,
 }) {
     if (!Array.isArray(requests) || requests.length === 0) return { mode: 'empty', outcomes: [] };
     const settings = getRuntimeSettings();
@@ -1792,6 +1795,14 @@ async function runNovelImageBatch({
             )
         ));
     const outcomes = new Array(prepared.length);
+    // 设置页「日志」：记下每张图实际发出的参数（不含 key / 端点）
+    const logOffset = drawLog ? drawLog.naiPrepared(prepared, requests, requestConfig.sendMode) : 0;
+    const logResult = (index, state, error = null) => {
+        if (!drawLog) return;
+        let classified = null;
+        try { classified = error ? classifyError(error) : null; } catch { /* ignore */ }
+        drawLog.naiResult(logOffset + index, { state, error, classified });
+    };
 
     if (transportMode !== 'frontend') {
         let backendStatus;
@@ -1813,6 +1824,7 @@ async function runNovelImageBatch({
             for (let pending = index; pending < prepared.length; pending++) {
                 const error = new NovelDrawError('已取消', ErrorType.ABORTED);
                 outcomes[pending] = { state: 'cancelled', error };
+                logResult(pending, 'cancelled');
                 await onItemSettled?.({ index: pending, state: 'cancelled', error, source: 'frontend' });
             }
             break;
@@ -1836,6 +1848,7 @@ async function runNovelImageBatch({
                     },
                 },
             );
+            logResult(index, 'ready');
             await onItemReady?.({ index, base64, prepared: prepared[index] });
             outcomes[index] = { state: 'ready', base64 };
         } catch (error) {
@@ -1844,6 +1857,7 @@ async function runNovelImageBatch({
                 : handleFetchError(error);
             const state = signal?.aborted ? 'cancelled' : 'failed';
             outcomes[index] = { state, error: normalized };
+            logResult(index, state, state === 'failed' ? normalized : null);
             await onItemSettled?.({ index, state, error: normalized, source: 'frontend' });
         }
     }
@@ -2558,6 +2572,7 @@ async function buildNovelScenePlannerOptions({
     signal,
     useWorldbook = true,
     onStateChange,
+    drawLog = null,
 }) {
     let worldbookEntries = null;
     const customPrompts = getActivePromptPreset(settings) || DEFAULT_PROMPT_CONFIG;
@@ -2586,7 +2601,10 @@ async function buildNovelScenePlannerOptions({
         absoluteMaxCharactersPerImage: capability.maxCharactersPerImage,
         modelGuide: getEffectiveNovelModelGuide(model, customPrompts),
         plannerProfile: getNovelPlannerProfile(model),
-        onDiagnosticUpdate: diagnostic => onStateChange?.('llm', toScenePlannerProgress(diagnostic)),
+        onDiagnosticUpdate: (diagnostic) => {
+            drawLog?.agent(diagnostic);
+            onStateChange?.('llm', toScenePlannerProgress(diagnostic));
+        },
         signal,
     };
 }
@@ -2595,7 +2613,24 @@ async function buildTextSourceTasks(options) {
     return generateAndParseScenePlan(await buildNovelScenePlannerOptions(options));
 }
 
+// 文本配图 / 楼层配图各记一条设置页「日志」；日志 handle 自己吞错，不影响生成
+function classifyErrorForLog(error) {
+    try { return classifyError(error); } catch { return null; }
+}
+
 async function generateImagesFromText(options = {}) {
+    const drawLog = beginDrawLog({ kind: 'text' });
+    try {
+        const result = await runGenerateImagesFromText(options, drawLog);
+        drawLog.finish(result);
+        return result;
+    } catch (error) {
+        drawLog.fail(error, classifyErrorForLog(error));
+        throw error;
+    }
+}
+
+async function runGenerateImagesFromText(options = {}, drawLog = null) {
     const text = String(options.text || '');
     if (!text.trim()) throw new NovelDrawError('正文内容为空，无法配图', ErrorType.PARSE);
     const galleryMeta = buildTextSourceGalleryMeta(options);
@@ -2640,6 +2675,7 @@ async function generateImagesFromText(options = {}) {
                 signal,
                 useWorldbook: !!options.useWorldbook,
                 onStateChange: options.onStateChange,
+                drawLog,
             });
         } catch (e) {
             console.error('[NovelDraw] 文本配图场景分析失败:', e);
@@ -2689,6 +2725,7 @@ async function generateImagesFromText(options = {}) {
             compiledBatch,
             signal,
             queueBatch: job,
+            drawLog,
             onStateChange: options.onStateChange,
             onItemReady: async ({ index, base64, prepared }) => {
                 const item = batchItems[index];
@@ -2763,11 +2800,24 @@ async function generateImagesFromText(options = {}) {
     }
 }
 
-async function generateAndInsertImages({
+async function generateAndInsertImages(options = {}) {
+    const drawLog = beginDrawLog({ kind: 'message', messageId: options?.messageId, automatic: options?.automatic === true });
+    try {
+        const result = await runGenerateAndInsertImages({ ...options, drawLog });
+        drawLog.finish(result);
+        return result;
+    } catch (error) {
+        drawLog.fail(error, classifyErrorForLog(error));
+        throw error;
+    }
+}
+
+async function runGenerateAndInsertImages({
     messageId,
     onStateChange,
     skipLock = false,
     automatic = false,
+    drawLog = null,
 }) {
     if (skipLock) {
         // 兼容旧调用：当前改为 message 级去重 + 图片请求队列，不再使用全局生成锁
@@ -2822,6 +2872,7 @@ async function generateAndInsertImages({
                 preset,
                 signal,
                 onStateChange,
+                drawLog,
             }));
         } catch (e) {
             console.error('[NovelDraw] 场景分析原始错误:', e);
@@ -3091,6 +3142,7 @@ async function generateAndInsertImages({
             compiledBatch,
             signal,
             queueBatch: job,
+            drawLog,
             onStateChange: (state, data) => {
                 checkPlacementContext();
                 onStateChange?.(state, data);
@@ -4524,6 +4576,18 @@ async function handleFrameMessage(event) {
             break;
         }
 
+        case 'GET_DRAW_LOGS': {
+            const entries = await listDrawLogs();
+            if (iframe?.isConnected) postToIframe(iframe, { type: 'DRAW_LOGS_DATA', entries }, 'XBDraw-NovelDraw');
+            break;
+        }
+
+        case 'CLEAR_DRAW_LOGS': {
+            const ok = await clearDrawLogs();
+            if (iframe?.isConnected) postToIframe(iframe, { type: 'DRAW_LOGS_DATA', entries: ok ? [] : await listDrawLogs(), cleared: ok }, 'XBDraw-NovelDraw');
+            break;
+        }
+
         case 'REFRESH_CACHE_STATS':
             sendInitData();
             break;
@@ -4670,6 +4734,9 @@ export async function initNovelDraw() {
     mvuActivityTracker?.stop();
     mvuActivityTracker = createMvuActivityTracker({ eventSource });
     mvuActivityTracker.start();
+    // 设置页「日志」：楼层渲染时记下 MVU 忙不忙；日志有变化就告诉打开着的设置页
+    setDrawLogMvuBusyProbe(() => mvuActivityTracker?.isBusy?.() === true);
+    drawLogSubscriptionDispose ||= subscribeDrawLogs(() => postToSettingsFrame({ type: 'DRAW_LOGS_CHANGED' }));
     initAfterAiGate();
     afterAiGateDispose?.();
     afterAiGateDispose = registerAfterAiHandler(MODULE_KEY, ({ chatId, messageId }) => {

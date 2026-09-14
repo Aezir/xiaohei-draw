@@ -46,6 +46,13 @@ https://github.com/Aezir/xiaohei-draw
 
 ## 自己的改动记录（重跑拆分脚本前先看这里）
 
+- 2026-09-15 设置页新增「日志」标签页（左栏 + 手机底栏，`#view-log`）：
+  - 一次配图（楼层配图 `generateAndInsertImages`、文本配图 `generateImagesFromText`）记一条，最多 50 条，存本机 IndexedDB 库 `xb_draw_logs`，不写酒馆设置文件。两个函数改成「开日志 → 调原来的 `run…` → 记结果」的外壳，原逻辑搬进 `runGenerateAndInsertImages` / `runGenerateImagesFromText`，只多收一个 `drawLog` 参数。
+  - 记三块：场景 Agent 每一轮（分析 / 纠错）的实际请求 messages、模型原始回复、没过校验的错误码 / 路径 / 说明、耗时（`onDiagnosticUpdate` 折进日志；`draw-agent-runtime.js` 的 attempts 每轮多存一份 `modelOutput`，通过校验的那轮也能看到回复）；NAI 每张图实际 payload 里的正负向、角色提示词和坐标、模型、尺寸、步数、CFG、采样器、种子、氛围图数量和成败（`runNovelImageBatch` 多收 `drawLog`）；楼层渲染（`message-rerender.js` 加可选 `onRenderReport`，`draw-common.js` 补上 MVU 忙不忙、有没有 `<StatusPlaceHolderImpl/>`、半秒后状态栏是 iframe 还是代码，自愈补发与补发后是否恢复；给了回调时最后一次补发后会多查一次，只报告不补发）。
+  - 新文件：`shared/draw-log.js`（纯函数：打码、base64 省略、裁剪、折叠诊断、NAI 摘要、渲染报告、复制文本）、`shared/draw-log-store.js`（IndexedDB + 内存，所有入口吞错，日志坏了不影响生图 / 渲染）、`providers/novelai/ui/draw-log-view.js`（页面，样式由脚本注入；提示词用 nai-prompt-highlight 上色，长文本默认折叠）。宿主消息 `GET_DRAW_LOGS` / `CLEAR_DRAW_LOGS` → `DRAW_LOGS_DATA`，日志变化推 `DRAW_LOGS_CHANGED`。
+  - 打码：字段名（authorization / api_key / token / password …）+ 正则兜底（Bearer、pst-、sk-、AIza、GitHub 令牌、JWT、URL 里的 key=）。图片 base64 / 氛围 token 不存，只存数量。
+  - 测试：新增 `tests/novelai/draw-log.test.mjs`；`message-rerender.test.mjs` 加 onRenderReport 用例。
+
 - 2026-09-14 图片管理页拆成「文生图 / 画廊」两块，完整画廊直接嵌在页面里：
   - `novel-draw.html` 的 `#view-gallery`：上「文生图」（缓存统计条、`#nd_gallery_container`、空状态，原样搬进 `section`），下「画廊」（`#nd-gallery-web-slot`）。删了 `#nd-gallery-link-slot`（精简画廊浏览网格）；它的 `/* nd-gallery-link */` 样式段没删（连接块还在用 `nd-gl-*`，浏览网格那几条成了闲置样式）。
   - `ui/gallery-web-launcher.js` 改成常驻 iframe（不再弹全屏浮层）：第一次切到图片管理页才加载 `gallery-web/index.html?embed=xiaohei`，高度 = 设置页滚动区可视高度（最少 420px），手机同样。没连画廊同步仓库时上方一条提示（本机画廊有图时说明这里看不到、去 API 配置连接后合并）。

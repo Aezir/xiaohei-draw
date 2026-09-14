@@ -13,6 +13,8 @@ import { ScenePlacementError } from './scene-placement.js';
 import { replaceSceneSlotElements } from './scene-slot-dom.js';
 import { DEFAULT_MESSAGE_FILTER_RULES } from './message-filter-rules.js';
 import { createMessageRerenderer } from './message-rerender.js';
+import { hasStatusPlaceholder } from './draw-log.js';
+import { isDrawLogWatchingMessage, readDrawLogMvuBusy, reportRenderToDrawLog } from './draw-log-store.js';
 import { createDrawImageSlotRegex } from './image-marker-syntax.js';
 import { classifyScenePlannerErrorForUi } from "./scene-planner-error-ui.js";
 import { isCharacterEnabled } from './character-selection.js';
@@ -94,7 +96,37 @@ const chatMessageRerenderer = createMessageRerenderer({
             return !box || !box.querySelector('iframe');
         });
     },
+    // 设置页「日志」的楼层渲染记录。整段包 try：日志出错不影响渲染
+    onRenderReport: (report) => {
+        try {
+            const isFollowUp = report?.stage === 'checked' || report?.stage === 'retried' || report?.stage === 'superseded';
+            if (!isFollowUp && !isDrawLogWatchingMessage(report?.messageId)) return;
+            const { text, ...rest } = report || {};
+            if (rest.stage === 'rendered') {
+                rest.mvuBusy = readDrawLogMvuBusy();
+                rest.hasPlaceholder = hasStatusPlaceholder(text);
+            }
+            if (rest.stage === 'checked') rest.statusBar = inspectStatusBarForLog(rest.messageId);
+            reportRenderToDrawLog(rest);
+        } catch {
+            /* 日志坏了不影响渲染 */
+        }
+    },
 });
+
+// 日志用：状态栏现在是 iframe、还是代码、还是这层根本没有状态栏
+function inspectStatusBarForLog(messageId) {
+    const mesText = getMesTextElement(messageId);
+    if (!mesText) return 'none';
+    const hasCode = Array.from(mesText.querySelectorAll('pre')).some((pre) => {
+        const text = pre.textContent || '';
+        if (!['html>', '<head>', '<body'].some(key => text.includes(key))) return false;
+        const box = pre.closest('div.TH-render');
+        return !box || !box.querySelector('iframe');
+    });
+    if (hasCode) return 'code';
+    return mesText.querySelector('iframe') ? 'iframe' : 'none';
+}
 
 export function rerenderChatMessage(messageId, message, options = {}) {
     return chatMessageRerenderer.rerender(messageId, message, options);

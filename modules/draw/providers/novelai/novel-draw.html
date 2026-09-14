@@ -16,7 +16,7 @@
    层级：页面 --bg-primary < 卡片 --bg-secondary < 卡内块/按钮 --bg-tertiary < 输入框 --bg-input */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 /* 零边线兜底：覆盖共用 Agent 样式和浏览器默认样式 */
-*, *::before, *::after { border-style: none !important; outline-style: none !important; box-shadow: none !important; }
+*, *::before, *::after { border-style: none !important; outline-style: none !important; box-shadow: none !important; -webkit-tap-highlight-color: transparent; }
 :root {
     --bg-primary: #191919;
     --bg-secondary: #202020;
@@ -998,6 +998,7 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
             <div class="nav-item" data-view="worldbook"><i class="ri-book-2-line"></i>世界书</div>
             <div class="nav-item" data-view="gallery"><i class="ri-image-2-line"></i>图片管理</div>
             <div class="nav-item" data-view="api"><i class="ri-key-2-line"></i>API 配置</div>
+            <div class="nav-item" data-view="log"><i class="ri-file-list-3-line"></i>日志</div>
         </nav>
 
         <!-- ═══════════════════════════════════════════════════════════════════
@@ -1712,6 +1713,24 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
             </div>
 
             <!-- ═══════════════════════════════════════════════════════════════
+                 日志：最近 50 次配图的完整过程（ui/draw-log-view.js，数据在宿主本机 IndexedDB）
+                 ═══════════════════════════════════════════════════════════════ -->
+            <div id="view-log" class="view">
+                <div class="view-header">
+                    <h2 class="view-title">日志</h2>
+                    <p class="view-desc">最近 50 次配图的完整过程，只存在这台设备的浏览器里</p>
+                </div>
+                <div class="nd-log-bar">
+                    <button id="nd_log_refresh" class="btn btn-sm" type="button" title="刷新"><i class="ri-refresh-line"></i> 刷新</button>
+                    <span class="nd-log-spacer"></span>
+                    <button id="nd_log_copy" class="btn btn-sm" type="button" disabled title="先点开一条"><i class="ri-file-copy-line"></i> 复制这条</button>
+                    <button id="nd_log_clear" class="btn btn-sm btn-danger" type="button"><i class="ri-delete-bin-line"></i> 清空日志</button>
+                </div>
+                <p id="nd_log_hint" class="form-hint" style="margin:-2px 2px 8px;"></p>
+                <div id="nd_log_list"></div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════════════════
                  快速测试已并入「绘图参数」：左栏测试提示词卡 + 底部生成栏 + 右栏生成结果
                  ═══════════════════════════════════════════════════════════════ -->
 
@@ -1729,6 +1748,7 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
             <div class="mobile-nav-item" data-view="worldbook"><i class="ri-book-2-line"></i><span>世界书</span></div>
             <div class="mobile-nav-item" data-view="gallery"><i class="ri-image-2-line"></i><span>图片</span></div>
             <div class="mobile-nav-item" data-view="api"><i class="ri-key-2-line"></i><span>API</span></div>
+            <div class="mobile-nav-item" data-view="log"><i class="ri-file-list-3-line"></i><span>日志</span></div>
         </div>
     </nav>
 
@@ -1757,6 +1777,7 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 <script type="module" src="ui/nd-cost-bar.js?v=20260913g1"></script>
 <script type="module" src="ui/gallery-browser.js?v=20260914ge1"></script>
 <script type="module" src="ui/gallery-web-launcher.js?v=20260914ge1"></script>
+<script type="module" src="ui/draw-log-view.js?v=20260915log1"></script>
 <script type="module">
 // NAI 提示词输入框语法高亮（shared/nai-prompt-highlight.js，分词器原样拷贝自 nai-gallery）。
 // 只接 NAI tag 框；提示词模板（给场景 Agent 的 markdown）不是 tag，不接。角色编辑表单是动态渲染的，自动接管后插入的。

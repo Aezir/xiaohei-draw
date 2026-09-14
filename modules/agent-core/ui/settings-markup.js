@@ -230,6 +230,7 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                     <button id="xb-assistant-delete-preset" type="button" class="xb-assistant-icon-button" title="删除预设" aria-label="删除预设" ${deleteDisabled}>${buildPresetActionIcon('delete')}</button>
                 </div>
             </div>
+            <div class="xb-assistant-runtime" id="xb-assistant-runtime">${escapeHtml(runtimeText)}</div>
             <label>
                 <span>Provider</span>
                 <select id="xb-assistant-provider">
@@ -323,7 +324,6 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
             </label>
             </div>
             ${delegatePageMarkup}
-            <div class="xb-assistant-runtime" id="xb-assistant-runtime">${escapeHtml(runtimeText)}</div>
             </fieldset>
             ${showInlineToast ? `<div class="xb-assistant-toast xb-assistant-toast-inline" id="xb-assistant-toast" aria-live="polite">${escapeHtml(normalizedLoadError || inlineToastText)}</div>` : ''}
         </section>

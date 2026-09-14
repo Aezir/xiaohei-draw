@@ -56,6 +56,37 @@ test('自愈：渲染后状态栏还是代码就补发 MESSAGE_UPDATED，好了�
     assert.equal(await run(99), 3, '一直是代码：最多补发 2 次');
 });
 
+test('onRenderReport：报告改写、半秒检查、补发、补发后恢复；回调抛错不影响渲染和自愈', async () => {
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    const { calls, host } = fakeHost();
+    const timers = [];
+    const reports = [];
+    let checks = 0;
+    const renderer = createMessageRerenderer({
+        loadHost: async () => host,
+        setTimer: callback => timers.push(callback),
+        needsRenderRetry: () => checks++ < 1,
+        onRenderReport: (report) => {
+            reports.push(report);
+            throw new Error('日志坏了');
+        },
+    });
+    assert.equal(await renderer.rerender(4, { mes: '正文\n<StatusPlaceHolderImpl/>', extra: {} }), true);
+    while (timers.length) {
+        await timers.shift()();
+        await flush();
+    }
+    assert.equal(calls.filter(call => call[0] === 'emit').length, 2, '补发一次');
+    assert.deepEqual(reports.map(report => [report.stage, report.attempt ?? null, report.needsRetry ?? null]), [
+        ['rendered', null, null],
+        ['checked', 0, true],
+        ['retried', 1, null],
+        ['checked', 1, false],
+    ]);
+    assert.ok(reports.every(report => report.renderId === reports[0].renderId && report.messageId === 4));
+    assert.match(reports[0].text, /StatusPlaceHolderImpl/);
+});
+
 test('规划文本只用于显示：浅拷贝，去掉 display_text，不改原 message', async () => {
     const { calls, host } = fakeHost();
     const renderer = createMessageRerenderer({ loadHost: async () => host });

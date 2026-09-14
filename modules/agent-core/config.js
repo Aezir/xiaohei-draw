@@ -96,7 +96,8 @@ export function cloneDefaultModelConfigs() {
 
 export function buildDefaultPreset() {
     return {
-        provider: DEFAULT_PROVIDER,
+        // 新用户开箱直接用酒馆主 API，不用填任何东西；已保存的预设带着自己的 provider，不受影响
+        provider: 'sillytavern-current',
         modelConfigs: cloneDefaultModelConfigs(),
         permissionMode: DEFAULT_PERMISSION_MODE,
     };

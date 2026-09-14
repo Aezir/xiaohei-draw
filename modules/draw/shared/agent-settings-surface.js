@@ -38,10 +38,25 @@ function escapeHtml(text = '') {
         .replace(/'/g, '&#39;');
 }
 
+// 预设名只是名字；这里直接写出「现在实际走哪条路」，免得用户靠名字猜。
 function buildRuntimeSummary({ draft = {}, providerLabel = '' } = {}) {
-    const presetName = String(draft.currentPresetName || '默认');
+    if (draft.provider === 'sillytavern-current') {
+        let source = '';
+        let model = '';
+        try {
+            const ctx = globalThis.SillyTavern?.getContext?.();
+            const oai = ctx?.chatCompletionSettings;
+            source = String(oai?.chat_completion_source || '');
+            model = String(ctx?.getChatCompletionModel?.() || oai?.[source === 'makersuite' ? 'google_model' : `${source}_model`] || '');
+        } catch { /* 读不到就只显示来源未知 */ }
+        return source
+            ? `当前：酒馆主 API（${source}${model ? ` · ${model}` : ''}）`
+            : '当前：酒馆主 API（酒馆还没连 Chat Completion）';
+    }
+    let host = '';
+    try { host = draft.baseUrl ? new URL(draft.baseUrl).host : ''; } catch { host = String(draft.baseUrl || ''); }
     const model = String(draft.model || '').trim() || '未选择模型';
-    return `预设「${presetName}」 · ${providerLabel || getProviderLabel(draft.provider)} / ${model}`;
+    return `当前：${providerLabel || getProviderLabel(draft.provider)}${host ? ` · ${host}` : ''} · ${model}`;
 }
 
 export function buildDrawAgentSettingsSurfaceMarkup(state = {}) {
