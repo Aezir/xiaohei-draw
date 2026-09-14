@@ -55,6 +55,27 @@
     --t1:#2268ff; --t2:#019f52; --t3:#c2479a; --t4:#e04a00; --t5:#cf2d56;
     --pop:rgba(255,255,255,.55); --scrim:rgba(255,255,255,.36);
   }
+  /* 小黑生图主题：只在嵌入模式（index.html?embed=xiaohei）下由脚本设上，平常打开用不到。
+     颜色取自小黑生图设置页：页面 #191919 < 块 #2a2a2a < 输入框 #2e2e2e，强调色粉色 #e889b0。
+     小黑生图的设计规矩是色块边缘不加线，所以这个主题下所有边框一律透明，选中 / 聚焦改用底色表示 */
+  :root[data-theme="xiaohei"]{
+    color-scheme:dark;
+    --bg:#191919; --panel:#191919; --panel2:#2a2a2a; --line:transparent;
+    --fg:#e6e6e4; --dim:#9b9b98; --dim2:#6b6b68; --accent:#e889b0;
+    --input:#2e2e2e; --bar:rgba(25,25,25,.92); --shadow:rgba(0,0,0,.5); --sel:#e889b0;
+    --t1:#e889b0; --t2:#4fd18b; --t3:#b48cff; --t4:#ff9560; --t5:#6fb6ff;
+  }
+  :root[data-theme="xiaohei"] *, :root[data-theme="xiaohei"] *::before, :root[data-theme="xiaohei"] *::after{border-color:transparent !important}
+  :root[data-theme="xiaohei"] :is(input, textarea, select, .pename, .pta, .xsel):focus{background:#383838}
+  :root[data-theme="xiaohei"] .cell.sel::before, :root[data-theme="xiaohei"] .cell.pk-on::before{
+    content:''; position:absolute; inset:0; z-index:1; pointer-events:none; background:rgba(232,137,176,.24);
+  }
+  :root[data-theme="xiaohei"] .pk{background:rgba(0,0,0,.5)}
+  :root[data-theme="xiaohei"] .ent .slot{background:var(--panel2)}
+  /* 嵌入模式下不合适的站点外壳：主题切换（固定用小黑生图主题）、NAI 额度（小黑生图自己有 Anlas 显示） */
+  :root[data-embed="xiaohei"] [data-embed-hide]{display:none !important}
+  .xhrow{margin:0 0 14px}
+  .xhrow .ibtn{padding:6px 14px; font-size:12.5px}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   /* hidden 属性的优先级比任何写了 display 的样式都低（.ibtn 的 inline-flex、.syform 的 grid 都会把它顶掉），
      所以全局补一条：标了 hidden 的一律不显示 */
@@ -1098,6 +1119,9 @@
         <img id="dimg" alt="">
         <div class="lens" id="lens"></div>
       </div>
+      <div class="xhrow" id="xhrow" hidden>
+        <button class="ibtn primary" id="xhpreset" title="用这张图的参数在小黑生图里新建一个绘图参数预设"><svg class="ic lg"><use href="#i-download-2-line"/></svg>加入绘图参数预设</button>
+      </div>
       <div id="dpe"></div>
       <div id="dchars"></div>
       <h4>Tag</h4>
@@ -1134,14 +1158,14 @@
         <button data-p="look"><svg class="ic lg"><use href="#i-contrast-line"/></svg><span>外观</span></button>
         <button data-p="sync"><svg class="ic lg"><use href="#i-upload-cloud-2-line"/></svg><span>同步与备份</span><i class="dot"></i></button>
         <button data-p="imp"><svg class="ic lg"><use href="#i-image-add-line"/></svg><span>导入</span></button>
-        <button data-p="nai"><svg class="ic lg"><use href="#i-eye-line"/></svg><span>NAI 额度</span></button>
+        <button data-p="nai" data-embed-hide><svg class="ic lg"><use href="#i-eye-line"/></svg><span>NAI 额度</span></button>
         <button data-p="data"><svg class="ic lg"><use href="#i-database-2-line"/></svg><span>数据</span></button>
       </nav>
       <div class="bd">
 
         <section class="pane" data-p="look">
           <div class="ptitle">外观</div>
-          <div class="sect">
+          <div class="sect" data-embed-hide>
             <h5>主题</h5>
             <div class="seg" id="themeseg">
               <button data-t="light"><svg class="ic lg"><use href="#i-sun-line"/></svg>浅色</button>
@@ -1326,6 +1350,34 @@
 <script>
 const $ = s => document.querySelector(s);
 
+/* ================= 嵌入小黑生图 ================= */
+/* 小黑生图（酒馆插件）的设置页用 iframe 打开 index.html?embed=xiaohei：固定用小黑生图主题，藏掉主题切换和 NAI 额度，
+   详情里多一个「加入绘图参数预设」。和插件同源，消息只发给同源的父页面，也只收父页面发来的。
+   父页面在插件连着画廊仓库时回一份 {repo, tok, key}，只放在内存里用，不写进本页的 nai.sync。
+   直接打开网站（没有 ?embed=xiaohei，或不在 iframe 里）时这里什么都不做，样子和原来一样 */
+const EMBED = new URLSearchParams(location.search).get('embed') === 'xiaohei' && window.parent !== window;
+if (EMBED) document.documentElement.dataset.embed = 'xiaohei';
+const Embed = (() => {
+  if (!EMBED) return {post(){}, link: Promise.resolve(null)};
+  const ORIGIN = location.origin, SRC = 'nai-gallery-embed', HOST = 'xiaohei-gallery-host';
+  const post = (type, data = {}) => { try{ window.parent.postMessage({...data, source: SRC, type}, ORIGIN); }catch(_){} };
+  let gotLink;
+  const link = new Promise(ok => { gotLink = ok; setTimeout(() => ok(null), 4000); });   // 父页面没回就按没连接处理
+  addEventListener('message', e => {
+    if (e.origin !== ORIGIN || e.source !== window.parent) return;
+    const d = e.data;
+    if (!d || d.source !== HOST) return;
+    if (d.type === 'link'){
+      const c = d.creds;
+      gotLink(c && typeof c.repo === 'string' && typeof c.tok === 'string' && typeof c.key === 'string' ? {repo: c.repo, tok: c.tok, key: c.key} : null);
+    }
+    else if (d.type === 'toast' && typeof d.text === 'string') toast(d.text);
+    else if (d.type === 'resync'){ if (syncOn()) syncNow(); }
+  });
+  post('hello');
+  return {post, link};
+})();
+
 /* ================= 主题 ================= */
 /* 五档：浅色（默认）/ 灰色 / 暗色 / 玻璃 / 跟随系统。
    主题集合换过一次，所以换了个存储键，老用户也回到默认浅色 */
@@ -1339,8 +1391,9 @@ function applyTheme(t){
   const real = t === 'auto'
     ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : t;
-  document.documentElement.dataset.theme = real;
   localStorage.setItem(THEME_KEY, t);
+  if (EMBED){ document.documentElement.dataset.theme = 'xiaohei'; return; }   // 嵌入时固定小黑生图主题，存下的选择留给平常打开用
+  document.documentElement.dataset.theme = real;
   document.querySelectorAll('#themeseg button')
     .forEach(b => b.classList.toggle('on', b.dataset.t === t));
   if (real === 'glass') glassBg();
@@ -2478,7 +2531,7 @@ Promise.all([
   if (innerWidth <= 820){ $('#size').value = 96; setCell(96); }   // 手机默认一排 3 张
   rebuild();
   glassBg();                                        // 玻璃主题要等图片列表到了才有背景可铺
-  backupDaily().finally(() => { if (syncOn()) syncNow(); });   // 每天第一次打开先备份一份；连着同步就再拉一次
+  backupDaily().finally(() => LINKED.then(() => { if (syncOn()) syncNow(); }));   // 每天第一次打开先备份一份；连着同步就再拉一次
 });
 
 /* 导入后整表重建：641+ 个格子重建只要几十毫秒，比增量插入好维护 */
@@ -3764,7 +3817,7 @@ $('#naiqref').onclick = renderQuota;
 
 /* 设置分区：点左边哪个显示哪个，记住上次停在哪个区 */
 function showPane(p){               // 别叫 setPane：调左右栏宽度的函数已经叫这个名字了
-  if (!document.querySelector(`#settings .pane[data-p="${p}"]`)) p = 'look';
+  if (!document.querySelector(`#settings .pane[data-p="${p}"]`) || (EMBED && p === 'nai')) p = 'look';
   document.querySelectorAll('#setnav button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   document.querySelectorAll('#settings .pane').forEach(x => x.classList.toggle('on', x.dataset.p === p));
   localStorage.setItem('nai.setpane', p);
@@ -4106,9 +4159,24 @@ const SyncCore = (() => {
 const SYNC_KEY = 'nai.sync';                      // {repo, tok, key, last}：只存在这台设备，不进导出的配置
 let SYC = load(SYNC_KEY, null), syT = 0, syBusy = false, syAgain = false;
 const syncOn = () => !!(SYC && SYC.repo && SYC.tok && SYC.key);
+// 嵌入小黑生图时：插件已经连着画廊仓库，就直接用它那份（host: true = 只在内存里，不落到 nai.sync）
+const LINKED = Embed.link.then(c => { if (c) SYC = {repo: c.repo, tok: c.tok, key: c.key, last: 0, host: true}; });
+const saveSYC = () => { if (SYC && !SYC.host) localStorage.setItem(SYNC_KEY, JSON.stringify(SYC)); };
 const devName = () => (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
 function syncSoon(){ if (!syncOn()) return; clearTimeout(syT); syT = setTimeout(syncNow, 3000); }
 const IMG_META = ['name', 'prompt', 'uc', 'seed', 'steps', 'scale', 'sampler', 'model', 'at', 'file', 'w', 'h', 'noimg', 'pngMeta', 'nai', 'batch'];
+// 嵌入小黑生图：详情里「加入绘图参数预设」。只发这张图的文字信息和提示词分支（和同步进仓库的格式一样），
+// 起名、查重、保存都由小黑生图那边做
+if (EMBED){
+  $('#xhrow').hidden = false;
+  $('#xhpreset').onclick = () => {
+    const im = IMGS[cur];
+    if (!im) return;
+    const v = varsOf(im.id);
+    const meta = JSON.parse(JSON.stringify(Object.fromEntries(IMG_META.filter(k => im[k] !== undefined).map(k => [k, im[k]]))));
+    Embed.post('import-preset', {record: {id: im.id, meta}, vars: {list: v.list || [], active: v.active ?? -1}, varIndex: v.active ?? -1});
+  };
+}
 function localSnap(){
   // 导入的图：只登记文字信息；图片文件在 plan 里单独传。删掉的（包括已经从本机真删的）留墓碑
   const base = new Set(IMGS.filter(im => !im.local).map(im => im.id)), imgs = {};
@@ -4369,7 +4437,7 @@ async function syncNow(loud, force){
     // 同时开着几个标签页时，用浏览器锁排队，一次只让一个在同步
     const r = navigator.locks ? await navigator.locks.request('nai-gallery-sync', run) : await run();
     await applyMerged(r.merged);
-    SYC.last = Date.now(); localStorage.setItem(SYNC_KEY, JSON.stringify(SYC));
+    SYC.last = Date.now(); saveSYC();
     syStat(); syBannerMsg = '';
     if (loud === true) toast(r.pushed ? (r.files ? `已同步，传了 ${r.files / 2} 张图` : '已同步') : '已经是最新的');
     pullImages(r.merged).catch(e => console.warn('下载图片失败', e));
@@ -4404,7 +4472,8 @@ function syStat(msg, err){
 function renderSync(){
   const on = syncOn();
   $('#syform').hidden = on; $('#syon').hidden = !on; $('#syexrow').hidden = !on;
-  if (on) $('#syrepotxt').textContent = `${SYC.repo} · 令牌 ···${SYC.tok.slice(-4)}`;
+  $('#syoff').hidden = !!(on && SYC.host);          // 小黑生图的连接在它的「API 配置 → 画廊同步仓库」里断开
+  if (on) $('#syrepotxt').textContent = SYC.host ? `${SYC.repo} · 用的是小黑生图里连好的仓库` : `${SYC.repo} · 令牌 ···${SYC.tok.slice(-4)}`;
   else if ($('#syrepo').hidden){ $('#syrepoedit').hidden = false; $('#syrepohint').hidden = false; }
   syStat();
   renderBackups();

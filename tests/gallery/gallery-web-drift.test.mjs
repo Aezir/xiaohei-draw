@@ -30,8 +30,9 @@ test('gallery storage keys do not collide with the plugin (same origin as SillyT
 
 test('launcher resolves the vendored page relative to its own module URL', async () => {
     const url = new URL('../../modules/draw/providers/novelai/ui/gallery-web-launcher.js', import.meta.url);
-    const { GALLERY_WEB_URL } = await import(url.href);
+    const { GALLERY_WEB_URL, GALLERY_EMBED_URL } = await import(url.href);
     assert.equal(GALLERY_WEB_URL, new URL('../../gallery-web/index.html', import.meta.url).href);
+    assert.equal(GALLERY_EMBED_URL, new URL('../../gallery-web/index.html?embed=xiaohei', import.meta.url).href);
 });
 
 const src = defaultSrc();

@@ -46,6 +46,16 @@ https://github.com/Aezir/xiaohei-draw
 
 ## 自己的改动记录（重跑拆分脚本前先看这里）
 
+- 2026-09-14 图片管理页拆成「文生图 / 画廊」两块，完整画廊直接嵌在页面里：
+  - `novel-draw.html` 的 `#view-gallery`：上「文生图」（缓存统计条、`#nd_gallery_container`、空状态，原样搬进 `section`），下「画廊」（`#nd-gallery-web-slot`）。删了 `#nd-gallery-link-slot`（精简画廊浏览网格）；它的 `/* nd-gallery-link */` 样式段没删（连接块还在用 `nd-gl-*`，浏览网格那几条成了闲置样式）。
+  - `ui/gallery-web-launcher.js` 改成常驻 iframe（不再弹全屏浮层）：第一次切到图片管理页才加载 `gallery-web/index.html?embed=xiaohei`，高度 = 设置页滚动区可视高度（最少 420px），手机同样。没连画廊同步仓库时上方一条提示（本机画廊有图时说明这里看不到、去 API 配置连接后合并）。
+  - `ui/gallery-browser.js` 只留：API 配置的画廊连接块（`#nd-gallery-auth-slot`，连接 / 断开 / 合并本机画廊）、预设栏「从画廊导入」（现在跳到图片管理页的画廊并提示点「加入绘图参数预设」）、导入为参数预设的完整流程（起名 → 同来源查重 → 同名查重 → `IMPORT_GALLERY_PRESET`，宿主回执照旧），对外 `window.NDGallery.importRecord(record, {vars, varIndex})`。状态提示改发 `nd:gallery-import-status` 事件，由画廊区域显示并转成画廊里的 toast。浏览网格、详情、「存为角色标签」按钮删掉（宿主的 `SAVE_GALLERY_CHARACTER_TAG` 没动，暂时没有入口）；`gallery-sync/thumb-queue.js` 不再被页面用到，文件和测试保留。
+  - 新文件 `shared/gallery-sync/embed-bridge.js`：设置页 ↔ 嵌入画廊的消息约定（`hello` → `link {repo,tok,key}|null`；`import-preset {record, vars, varIndex}`；`toast`；`resync`）。只认同源 + 来自那个 iframe 的消息，发送 targetOrigin 写死本源，导入请求只挑 record/vars/varIndex。
+  - 登录打通：插件连着仓库时，嵌入的画廊启动就拿到插件那份 `{repo,tok,key}`，只放内存（`SYC.host`），不写画廊自己的 `nai.sync`，画廊设置里显示「用的是小黑生图里连好的仓库」并藏掉「断开」。插件连接 / 断开后自动重新加载 iframe；插件往仓库批量存图 / 合并本机画廊后通知画廊同步一次。
+  - 画廊网站（nai-gallery 源文件）加嵌入模式：`?embed=xiaohei` 且在 iframe 里才生效，`data-theme="xiaohei"`（#191919 / #2a2a2a / #2e2e2e + 粉色 #e889b0，所有边框透明，选中改粉色底），藏主题切换和「NAI 额度」，详情里加「加入绘图参数预设」。平常直接打开不变。
+  - `tools/sync-gallery-web.mjs` 加 `--worktree`（拷 nai-gallery 没提交的工作区文件，`VENDOR.json` 记 `ref: WORKTREE`，检查和漂移测试跟着和工作区比）。这次 gallery-web 就是这样拷的；nai-gallery 提交以后不带参数再跑一次。
+  - 测试：新增 `tests/gallery/gallery-embed.test.mjs`（消息校验、导入请求清洗、只回三个凭据字段、画廊页嵌入模式只在 xiaohei 下生效、内联脚本能解析、插件凭据不落 `nai.sync`）；`gallery-web-drift.test.mjs` 加嵌入地址。
+
 - 2026-09-13 聊天图片长按面板 + 卡面去角标去底框 + 灯箱缩放（前端；改前备份 `docs/plans/backup/pre-cardmenu/`）：
   - 共享操作注册表 + 面板组件新文件 `shared/image-action-menu.js`：`registerImageAction({id, icon, label, when(ctx), run(ctx), order, surfaces})`，`surfaces` 取 `'chat'`（聊天图片长按）/ `'lightbox'`（灯箱长按），缺省两处都有；`listImageActions(ctx, surface)`；`createImageActionMenu`（Notion 暗色 #252525、粉色强调、Remix 图标、零边线，出视口翻转，触屏项高 44px）；`openChatImageMenu(x, y, ctx)` 整页一个，外面按下 / 滚动 / Esc / 宽度变化自动关，关面板的那次按下落在图片上不会顺带开灯箱。`image-lightbox.js` 的 `registerLightboxAction` 保留为兼容包装（不写 surfaces 时只进灯箱），`listLightboxActions(ctx)` = lightbox 处的项。
   - 聊天图片长按（触摸）/ 右键（鼠标）在按压位置弹面板，恰好两项：「下载」（原图，同原来的长按下载）、「同步到 Gallery」（原「存入画廊」，逻辑不变：连了仓库存远端、没连存本机，批次 = 角色名，webp，用参数快照）。长按后不再触发单击 / 双击；`bindGestures` 拦 contextmenu（有面板时也不冒泡给酒馆）和 selectstart。`attachChatImageCardGestures` 新增 `actions.menu(card, {x, y})`，没传才退回直接下载。宿主 `novel-draw.js` 的 `openCardActionMenu` 取预览记录后开面板。

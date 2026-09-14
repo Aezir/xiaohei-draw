@@ -1571,12 +1571,12 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
             <div id="view-gallery" class="view">
                 <div class="view-header">
                     <h2 class="view-title">图片管理</h2>
-                    <p class="view-desc">查看、管理和清理生成的配图</p>
+                    <p class="view-desc">聊天里生成的图，和完整画廊</p>
                 </div>
 
-                <div id="nd-gallery-web-slot"></div>
-                <div id="nd-gallery-link-slot"></div>
-
+                <!-- 上：文生图（聊天里生成、缓存在本机的图） -->
+                <section class="nd-gallery-section" aria-labelledby="nd_sec_t2i">
+                <div class="nd-subhead" id="nd_sec_t2i"><i class="ri-magic-line"></i>文生图</div>
                 <div class="card">
                     <div class="nd-cache-bar">
                         <div class="nd-cache-stats">
@@ -1610,6 +1610,13 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                     <div>暂无图片</div>
                     <p>生成的配图会显示在这里，点击角色展开查看</p>
                 </div>
+                </section>
+
+                <!-- 下：画廊（完整画廊网站直接嵌在页面里，ui/gallery-web-launcher.js） -->
+                <section class="nd-gallery-section" aria-labelledby="nd_sec_gallery">
+                <div class="nd-subhead" id="nd_sec_gallery"><i class="ri-gallery-view-2"></i>画廊</div>
+                <div id="nd-gallery-web-slot"></div>
+                </section>
             </div>
 
             <!-- ═══════════════════════════════════════════════════════════════
@@ -1745,8 +1752,8 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 <script type="module" src="../../shared/xb-dialog.js?v=20260913g1"></script>
 <script type="module" src="ui/novel-vibe-panel.js?v=20260913g1"></script>
 <script type="module" src="ui/nd-cost-bar.js?v=20260913g1"></script>
-<script type="module" src="ui/gallery-browser.js?v=20260913g1"></script>
-<script type="module" src="ui/gallery-web-launcher.js?v=20260914gw1"></script>
+<script type="module" src="ui/gallery-browser.js?v=20260914ge1"></script>
+<script type="module" src="ui/gallery-web-launcher.js?v=20260914ge1"></script>
 <script type="module">
 // NAI 提示词输入框语法高亮（shared/nai-prompt-highlight.js，分词器原样拷贝自 nai-gallery）。
 // 只接 NAI tag 框；提示词模板（给场景 Agent 的 markdown）不是 tag，不接。角色编辑表单是动态渲染的，自动接管后插入的。

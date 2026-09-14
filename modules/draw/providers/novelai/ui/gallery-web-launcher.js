@@ -1,92 +1,157 @@
-// 「打开完整画廊」：在设置页里铺一层全屏浮层，用 iframe 加载插件自带的完整画廊网站（gallery-web/index.html，
-// 由 tools/sync-gallery-web.mjs 从 nai-gallery 原样拷贝）。
+// 图片管理页下半部分「画廊」：完整画廊网站（gallery-web/index.html，由 tools/sync-gallery-web.mjs 从 nai-gallery 拷贝）
+// 用 iframe 常驻嵌在页面里，地址带 ?embed=xiaohei（画廊换成小黑生图主题、藏掉主题切换、详情里多「加入绘图参数预设」）。
 //   - 地址按本文件的 import.meta.url 算，插件目录叫 xiaohei-draw / XBDraw / 别的名字都能找到。
-//   - 完整画廊和酒馆同源：它自己的数据在 localStorage 的 nai.* 和 IndexedDB 的 nai-gallery，
-//     和插件的 xb_* / xbdraw.* 不重名；登录（令牌 + 密码）也是它自己单独一份，和精简画廊不共用。
-//   - 关闭浮层就卸掉 iframe。Esc 只在焦点在浮层顶栏时关闭（画廊里的 Esc 留给画廊自己用）。
+//   - 第一次切到图片管理页才加载 iframe；高度 = 设置页滚动区的可视高度（手机也一样）。
+//   - 登录打通：画廊启动时发 hello，这里读插件的画廊连接（IndexedDB xb_gallery_link 的 {repo, tok, key}）回给它，
+//     画廊只放内存里用。插件那边连接 / 断开后重新加载 iframe。消息约定见 shared/gallery-sync/embed-bridge.js。
+//   - 「加入绘图参数预设」：画廊只发图的文字信息，这里交给 gallery-browser.js 的 window.NDGallery.importRecord，
+//     走和原来「导入为参数预设」一样的起名 / 查重 / IMPORT_GALLERY_PRESET 路径。
+import { createCredentialStore } from '../../../shared/gallery-sync/credential-store.js';
+import { createLocalGallery } from '../../../shared/gallery-sync/local-store.js';
+import { listImages } from '../../../shared/gallery-sync/gallery-client.js';
+import { embedUrl, hostMessage, isTrustedEmbedMessage, linkReply, parseImportRequest } from '../../../shared/gallery-sync/embed-bridge.js';
+
 export const GALLERY_WEB_URL = new URL('../../../../../gallery-web/index.html', import.meta.url).href;
+export const GALLERY_EMBED_URL = embedUrl(GALLERY_WEB_URL);
 
 const STYLE_ID = 'nd-gw-style';
 const CSS = `
-#nd-gallery-web-slot:empty { display: none; }
-#nd-gallery-web-slot { margin-bottom: 8px; }
-#nd-gallery-web-slot > .card { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.nd-gw-text { flex: 1; min-width: 180px; }
-.nd-gw-text .card-title { margin: 0 0 2px; }
-.nd-gw-text .card-title i { color: var(--accent); font-size: 14px; vertical-align: -2px; margin-right: 4px; }
-.nd-gw-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
-.nd-gw-overlay { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; background: #0d0e12; }
-.nd-gw-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px 0 12px;
-    padding-top: env(safe-area-inset-top); box-sizing: content-box; background: #15161b; color: #e6e8ee; font-size: 13px; }
-.nd-gw-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nd-gw-name i { color: var(--accent); font-size: 16px; }
-.nd-gw-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px;
-    padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 13px; cursor: pointer; text-decoration: none; }
-.nd-gw-btn i { font-size: 18px; }
-.nd-gw-btn:hover { background: rgba(232, 137, 176, 0.16); color: var(--accent); }
-.nd-gw-btn.is-close:hover { background: var(--accent); color: #1a1a1a; }
-.nd-gw-frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; background: #0d0e12; }
-@media (max-width: 768px) { .nd-gw-lbl { display: none; } }
+.nd-gallery-section + .nd-gallery-section { margin-top: 16px; }
+#nd-gallery-web-slot { display: flex; flex-direction: column; gap: 6px; }
+#nd-gallery-web-slot [hidden] { display: none !important; }
+#nd-gallery-web-slot .nd-gw-status:empty { display: none; }
+.nd-gw-frame { display: block; width: 100%; height: calc(100dvh - 48px); min-height: 420px; border: 0; border-radius: var(--radius-lg, 10px); background: var(--bg-primary); }
 `;
 
 function el(tag, props = {}, ...kids) {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(props)) {
+        if (v == null || v === false) continue;
         if (k === 'class') n.className = v;
         else if (k === 'text') n.textContent = v;
-        else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+        else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
+        else if (v === true) n.setAttribute(k, '');
         else n.setAttribute(k, v);
     }
-    n.append(...kids);
+    n.append(...kids.filter(x => x != null && x !== false));
     return n;
 }
 const ri = cls => el('i', { class: cls, 'aria-hidden': 'true' });
 
-let overlay = null;
-let lastFocus = null;
+const E = { slot: null, frame: null, note: null, status: null, box: null, credentials: undefined, local: undefined, listening: false };
 
-function onKey(e) {
-    if (e.key === 'Escape' && overlay) { e.preventDefault(); closeGalleryWeb(); }
+function stores() {
+    if (E.credentials === undefined) { try { E.credentials = createCredentialStore(); } catch { E.credentials = null; } }
+    if (E.local === undefined) { try { E.local = createLocalGallery(); } catch { E.local = null; } }
+    return { credentials: E.credentials, local: E.local };
 }
 
-export function openGalleryWeb() {
-    if (overlay) return overlay;
-    lastFocus = document.activeElement;
-    overlay = el('div', { class: 'nd-gw-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': '完整画廊' },
-        el('div', { class: 'nd-gw-bar' },
-            el('div', { class: 'nd-gw-name' }, ri('ri-gallery-view-2'), el('span', { text: '完整画廊' })),
-            el('a', { class: 'nd-gw-btn', href: GALLERY_WEB_URL, target: '_blank', rel: 'noopener', title: '在新标签页打开' },
-                ri('ri-external-link-line'), el('span', { class: 'nd-gw-lbl', text: '新标签页' })),
-            el('button', { class: 'nd-gw-btn is-close', type: 'button', title: '关闭（Esc）', 'aria-label': '关闭完整画廊', onclick: closeGalleryWeb },
-                ri('ri-close-line'))),
-        el('iframe', { class: 'nd-gw-frame', title: '完整画廊', src: GALLERY_WEB_URL, allow: 'clipboard-read; clipboard-write' }));
-    document.body.appendChild(overlay);
-    document.addEventListener('keydown', onKey);
-    overlay.querySelector('.is-close').focus();
-    return overlay;
+function send(msg) {
+    try { E.frame?.contentWindow?.postMessage(msg, window.location.origin); } catch { /* iframe 已卸载 */ }
 }
 
-export function closeGalleryWeb() {
-    if (!overlay) return;
-    document.removeEventListener('keydown', onKey);
-    overlay.remove();
-    overlay = null;
-    try { lastFocus?.focus?.(); } catch { /* ignore */ }
+function setStatus({ state = '', text = '' } = {}) {
+    if (!E.status) return;
+    E.status.textContent = text || '';
+    E.status.className = `status-text nd-gw-status${state ? ` ${state}` : ''}`;
+    if (E.frame && text && (state === 'success' || state === 'error')) send(hostMessage('toast', { text }));
 }
 
-export function mountGalleryWebLauncher(slot) {
+function fitHeight() {
+    if (!E.frame) return;
+    const main = E.slot?.closest('.app-main');
+    let h = 0;
+    if (main) {
+        const cs = getComputedStyle(main);
+        h = main.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    }
+    if (!(h > 0)) h = (window.innerHeight || 0) - 24;
+    E.frame.style.height = `${Math.max(420, Math.round(h))}px`;
+}
+
+async function renderNote() {
+    if (!E.note) return;
+    const { credentials, local } = stores();
+    let creds = null, localCount = 0;
+    try { creds = credentials ? await credentials.load() : null; } catch { creds = null; }
+    if (!creds && local) {
+        try { localCount = listImages((await local.readState()).state, { limit: 0 }).total; } catch { localCount = 0; }
+    }
+    if (creds) { E.note.hidden = true; E.note.replaceChildren(); return; }
+    const goAuth = () => {
+        if (typeof window.switchView === 'function') window.switchView('api');
+        setTimeout(() => document.getElementById('nd-gallery-auth-slot')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
+    };
+    const text = localCount
+        ? `小黑生图还没连画廊同步仓库：聊天里「同步到 Gallery」的 ${localCount} 张图存在小黑生图本机，这里的画廊看不到。连上仓库后可以合并上去。`
+        : '小黑生图还没连画廊同步仓库。在 API 配置里连上以后，这里的画廊自动用同一个仓库，不用再登录一次。';
+    E.note.replaceChildren(el('div', { class: 'nd-gl-note-row' }, ri('ri-information-line'), el('span', { text }),
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: goAuth }, '去连接')));
+    E.note.hidden = false;
+}
+
+function loadFrame() {
+    if (E.frame || !E.box) return;
+    E.frame = el('iframe', { class: 'nd-gw-frame', title: '画廊', src: GALLERY_EMBED_URL, allow: 'clipboard-read; clipboard-write' });
+    E.box.replaceChildren(E.frame);
+    fitHeight();
+}
+
+function reloadFrame() {
+    if (!E.frame) return;
+    try { E.frame.contentWindow.location.reload(); } catch { E.frame.src = GALLERY_EMBED_URL; }
+}
+
+async function onMessage(event) {
+    if (!E.frame || !isTrustedEmbedMessage(event, { origin: window.location.origin, frameWindow: E.frame.contentWindow })) return;
+    const data = event.data;
+    if (data.type === 'hello') {
+        let creds = null;
+        try { creds = stores().credentials ? await stores().credentials.load() : null; } catch { creds = null; }
+        send(linkReply(creds));
+        return;
+    }
+    if (data.type === 'import-preset') {
+        let req;
+        try { req = parseImportRequest(data); } catch (e) { setStatus({ state: 'error', text: e?.message || '这张图没法导入' }); return; }
+        const api = window.NDGallery;
+        if (!api || typeof api.importRecord !== 'function') { setStatus({ state: 'error', text: '设置页还没准备好，稍后再试' }); return; }
+        void api.importRecord(req.record, { vars: req.vars, varIndex: req.varIndex });
+    }
+}
+
+export function mountGalleryWebEmbed(slot) {
     if (!slot) return;
+    E.slot = slot;
     if (!document.getElementById(STYLE_ID)) document.head.appendChild(el('style', { id: STYLE_ID, text: CSS }));
-    slot.replaceChildren(el('div', { class: 'card' },
-        el('div', { class: 'nd-gw-text' },
-            el('div', { class: 'card-title' }, ri('ri-gallery-view-2'), '完整画廊'),
-            el('div', { class: 'nd-gw-desc', text: '全功能画廊网站（分面筛选、tag、导入、同步与备份）。登录单独一份，和下面的精简画廊互不影响。' })),
-        el('button', { class: 'btn btn-primary', type: 'button', onclick: openGalleryWeb },
-            ri('ri-fullscreen-line'), ' 打开完整画廊')));
+    E.note = el('div', { class: 'nd-gw-note', hidden: true });
+    E.status = el('div', { class: 'status-text nd-gw-status', role: 'status' });
+    E.box = el('div', { class: 'nd-gw-box' });
+    slot.replaceChildren(E.note, E.status, E.box);
+
+    const view = document.getElementById('view-gallery');
+    const visible = () => !view || view.classList.contains('active');
+    const onShow = () => { loadFrame(); fitHeight(); void renderNote(); };
+    if (visible()) onShow();
+    if (view && typeof MutationObserver === 'function') {
+        // 只在 active 真的变了才处理（回调里不写被观察的属性）
+        let was = visible();
+        new MutationObserver(() => { const now = visible(); if (now !== was) { was = now; if (now) onShow(); } })
+            .observe(view, { attributes: true, attributeFilter: ['class'] });
+    }
+    if (E.listening) return;
+    E.listening = true;
+    window.addEventListener('message', onMessage);
+    window.addEventListener('resize', fitHeight);
+    const main = slot.closest('.app-main');
+    if (main && typeof ResizeObserver === 'function') new ResizeObserver(fitHeight).observe(main);
+    document.addEventListener('nd:gallery-link-change', () => { void renderNote(); reloadFrame(); });
+    document.addEventListener('nd:gallery-import-status', e => setStatus(e.detail || {}));
+    document.addEventListener('nd:gallery-batch-done', () => { void renderNote(); send(hostMessage('resync')); });
 }
 
 if (typeof document !== 'undefined') {
-    const go = () => mountGalleryWebLauncher(document.getElementById('nd-gallery-web-slot'));
+    const go = () => mountGalleryWebEmbed(document.getElementById('nd-gallery-web-slot'));
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go, { once: true });
     else go();
 }

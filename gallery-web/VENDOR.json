@@ -1,11 +1,13 @@
 {
   "source": "Aezir/nai-gallery",
   "commit": "ed8458d9a17383228f22d88fc9824cac5829d1b9",
+  "ref": "WORKTREE",
+  "dirty": true,
   "note": "自动生成，禁止手改。index.html / icon.svg 原样拷贝（只统一了换行符）；data.json 是插件自带的空模板，不来自源仓库。重新生成：node tools/sync-gallery-web.mjs",
   "files": {
     "index.html": {
-      "sha256": "ca2b6257be67fcc4d5b0bdc2a5fa956678090e794f3b5245bcb7b2d16c226953",
-      "bytes": 263272
+      "sha256": "f98fe8a98fc511558922968e4f278a5cb9d8f95e39cfbe4ca24562f795cfb0cd",
+      "bytes": 268364
     },
     "icon.svg": {
       "sha256": "d2b4339d3b88e048fd369026623d26446576c288167980539e42566ba211fb9c",
