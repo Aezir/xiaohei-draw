@@ -5,8 +5,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { getContext } from "../../../../../../../extensions.js";
-import { saveBase64AsFile } from "../../../../../../../utils.js";
-import { getRequestHeaders, syncMesToSwipe } from "../../../../../../../../script.js";
+import { eventSource, getRequestHeaders, syncMesToSwipe } from "../../../../../../../../script.js";
+import { createMvuActivityTracker, waitForMessageSettled } from '../../shared/mvu-settle.js';
+import { appendMissingFilterRules } from '../../shared/message-filter-rules.js';
 import { extensionFolderPath } from "../../../../core/constants.js";
 import { createModuleEvents, event_types } from "../../../../core/event-manager.js";
 import { NovelDrawStorage } from "../../../../core/server-storage.js";
@@ -15,9 +16,9 @@ import {
     openDB, storePreview, getPreview, getPreviewsBySlot,
     getDisplayPreviewForSlot, storeFailedPlaceholder, deleteFailedRecordsForSlot,
     setSlotSelection, clearSlotSelection,
-    updatePreviewSavedUrl, deletePreview, getCacheStats, clearExpiredCache, clearAllCache,
+    deletePreview, getCacheStats, clearExpiredCache, clearAllCache,
     getGallerySummary, getCharacterPreviews, openGallery, closeGallery, destroyGalleryCache,
-    getPreviewDisplayUrl, getBase64ImagePayload, preloadPreviewDisplayUrl, warmSlotPreviewNeighbors
+    getPreviewDisplayUrl, preloadPreviewDisplayUrl, warmSlotPreviewNeighbors
 } from '../../shared/gallery-cache.js';
 import {
     ScenePlannerError,
@@ -31,6 +32,7 @@ import {
     updateSharedDrawSettingsPersistent,
     normalizeSharedCacheDays,
     mergeNovelDrawProviderSettingsIntoStorageRoot,
+    syncSharedMessageFilterRulesCache,
 } from '../../shared/draw-settings.js';
 import { getLastDrawAgentDiagnostic } from '../../shared/draw-agent.js';
 import { attachDrawAgentSettingsSurface } from '../../shared/agent-settings-surface.js';
@@ -98,7 +100,6 @@ import {
 import { migrateLegacyNovelPromptSettings } from './novel-prompt-migration.js';
 import { WorldbookProcessor } from '../../shared/worldbook-processor.js';
 import {
-    openCloudPresetsModal,
     downloadPresetAsFile,
     parsePresetData,
     destroyCloudPresets
@@ -121,6 +122,7 @@ import {
     isAnyMessageBeingEdited,
     isMessageBeingEdited,
     DEFAULT_MESSAGE_FILTER_RULES,
+    rerenderChatMessage,
 } from '../../shared/draw-common.js';
 import {
     buildBusyInnerHtml,
@@ -155,9 +157,10 @@ import {
     commitSceneSlotReplacement,
     getSceneSlotIds,
     ScenePlacementError,
-    assertSceneSourceUnchanged,
     commitSettledScenePlacements,
     insertScenePlacementsPreservingSlots,
+    isSceneSlotAlive,
+    rebaseScenePlacements,
     removeSceneSlotPlaceholders,
     setActiveMessageText,
 } from '../../shared/scene-placement.js';
@@ -180,7 +183,11 @@ const NAI_BACKEND_V5_MIN_VERSION = NAI_BACKEND_MIN_VERSION;
 const NAI_BACKEND_STATUS_TIMEOUT = 5000;
 const NAI_BACKEND_STATUS_ATTEMPTS = 2;
 const NAI_BACKEND_STATUS_RETRY_DELAY_MS = 1000;
-const CONFIG_VERSION = 8;
+const CONFIG_VERSION = 10;
+// v9：请求间隔默认值从 15–30 秒改成 150–300 毫秒；旧存档一次性改到新默认值，之后尊重用户手改。
+const REQUEST_DELAY_RESET_CONFIG_VERSION = 9;
+// v10：默认过滤规则新增 MVU 状态栏占位符 / HTML 代码块 / 整页 HTML；已保存自定义规则的老存档一次性补到末尾。
+const MESSAGE_FILTER_RULES_MIGRATION_CONFIG_VERSION = 10;
 
 function isVersionAtLeast(version, minimum) {
     const parse = value => String(value || '').split('.').map(part => Number.parseInt(part, 10) || 0);
@@ -349,7 +356,7 @@ const DEFAULT_SETTINGS = {
     insecureTLS: false,
     selectedParamsPresetId: null,
     paramsPresets: [],
-    requestDelay: { min: 15000, max: 30000 },
+    requestDelay: { min: 150, max: 300 },
     timeout: 60000,
     useWorldInfo: false,    
     characterTags: [],
@@ -373,6 +380,8 @@ const DEFAULT_SETTINGS = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let autoBusy = false;
+// MVU 变量卡活动监听（mag_variable_update_started / ended、Mvu.isDuringExtraAnalysis）。
+let mvuActivityTracker = null;
 let overlayCreated = false;
 let frameReady = false;
 let jsZipLoaded = false;
@@ -872,6 +881,22 @@ async function loadSettings() {
             saved?.autoLearnCharacters, saved?.advancedMode);
         const promptUpgrade = migrateLegacyNovelPromptSettings(saved || {}, DEFAULT_PROMPT_CONFIG, PROMPT_TEMPLATE_VERSION);
         settingsCache = normalizeSettings(promptUpgrade.settings);
+        // 一次性迁移：configVersion 升到 9 之前存过的请求间隔，统一改成新默认 150–300ms。
+        if (saved?.requestDelay
+            && (Number(saved.configVersion) || 0) < REQUEST_DELAY_RESET_CONFIG_VERSION) {
+            settingsCache.requestDelay = { ...DEFAULT_SETTINGS.requestDelay };
+        }
+        // 一次性迁移：v10 之前存过自定义过滤规则的，补上新增默认规则（共享字段在同一存储根对象里）。
+        let savedRoot = saved;
+        let migratedFilterRules = null;
+        if (saved && (Number(saved.configVersion) || 0) < MESSAGE_FILTER_RULES_MIGRATION_CONFIG_VERSION) {
+            const filterMigration = appendMissingFilterRules(saved.messageFilterRules);
+            if (filterMigration.added > 0) {
+                migratedFilterRules = filterMigration.rules;
+                savedRoot = { ...saved, messageFilterRules: migratedFilterRules };
+                settingsCache.messageFilterRules = migratedFilterRules;
+            }
+        }
 
         if (!saved
             || saved.configVersion !== CONFIG_VERSION
@@ -879,9 +904,10 @@ async function loadSettings() {
             || promptUpgrade.migrated) {
             settingsCache.configVersion = CONFIG_VERSION;
             settingsCache.updatedAt = Date.now();
-            const storageValue = mergeNovelDrawProviderSettingsIntoStorageRoot(saved, settingsCache);
+            const storageValue = mergeNovelDrawProviderSettingsIntoStorageRoot(savedRoot, settingsCache);
             const savedMigration = await NovelDrawStorage.setAndSave(SERVER_FILE_KEY, storageValue, { silent: true });
             if (!savedMigration) throw new Error('默认设置保存失败');
+            if (migratedFilterRules) syncSharedMessageFilterRulesCache(migratedFilterRules);
         }
         settingsLoaded = true;
         if (saved && promptUpgrade.installed) {
@@ -1675,6 +1701,7 @@ async function executePreparedNovelRequest(prepared, requestConfig, signal) {
                     signal: controller.signal,
                 });
                 console.log(`[NovelDraw] V5 完成(后端) ${Date.now() - startedAt}ms`);
+                noteV5Success();
                 return imageBytesToBase64(image);
             }
             const base64 = await generateViaBackend({
@@ -1716,6 +1743,7 @@ async function executePreparedNovelRequest(prepared, requestConfig, signal) {
                 signal: controller.signal,
             });
             console.log(`[NovelDraw] V5 完成 ${Date.now() - startedAt}ms`);
+            noteV5Success();
             return imageBytesToBase64(image);
         }
         const responseData = await readImageResponse(response, controller.signal);
@@ -2030,40 +2058,7 @@ function setupEventDelegation() {
 async function handleImageClick(container) {
     const slotId = container.dataset.slotId;
     const messageId = parseInt(container.dataset.mesid);
-    const findCard = (sid, msgId) => getMesTextElement(msgId)?.querySelector(buildDrawSlotSelector(sid))
-        || document.querySelector(buildDrawSlotSelector(sid));
-    await openGallery(slotId, messageId, {
-        onUse: (sid, msgId, selected, historyCount, selectedIndex = 0) => {
-            const cont = findCard(sid, msgId);
-            if (cont) {
-                const img = cont.querySelector('.xb-nd-img-wrap > img');
-                if (img) img.src = getPreviewDisplayUrl(selected);
-                cont.dataset.imgId = selected.imgId;
-                cont.dataset.tags = selected.tags || '';
-                cont.dataset.positive = selected.positive || '';
-                setImageState(cont, selected.savedUrl ? ImageState.SAVED : ImageState.PREVIEW);
-                updateNavControls(cont, selectedIndex, historyCount);
-            }
-            if (selected?.savedUrl) {
-                void syncNovelDrawSavedFromPreview(msgId, selected, { slotId: sid }).catch(() => {});
-            } else {
-                void clearNovelDrawSavedEntry(msgId, sid).catch(() => {});
-            }
-        },
-        onSave: (imgId, url) => {
-            const cont = document.querySelector(`.xb-nd-img[data-img-id="${CSS.escape(String(imgId))}"]`);
-            if (cont) {
-                const img = cont.querySelector('.xb-nd-img-wrap > img');
-                if (img) img.src = url;
-                setImageState(cont, ImageState.SAVED);
-            }
-            void getPreview(imgId)
-                .then(preview => preview && syncNovelDrawSavedFromPreview(messageId, preview, { savedUrl: url }))
-                .catch(e => {
-                    console.warn('[NovelDraw] 保存后的楼层持久化失败:', e);
-                });
-        },
-    });
+    await openGallery(slotId, messageId);
 }
 
 async function toggleEditPanel(container, show) {
@@ -2302,34 +2297,6 @@ async function refreshSingleImage(container) {
         }
     } finally {
         releaseGenerationJob(job);
-    }
-}
-
-async function saveSingleImage(container) {
-    const imgId = container.dataset.imgId;
-    const slotId = container.dataset.slotId;
-    const currentState = container.dataset.state;
-    if (currentState !== ImageState.PREVIEW) return;
-    const messageId = parseInt(container.dataset.mesid);
-    const preview = await getPreview(imgId);
-    if (!preview?.base64) { void xbAlert('图片数据丢失，请刷新'); return; }
-    setImageState(container, ImageState.SAVING);
-    try {
-        const charName = preview.characterName || getChatCharacterName();
-        const image = getBase64ImagePayload(preview.base64);
-        const url = await saveBase64AsFile(image.base64, charName, `novel_${imgId}`, image.format);
-        preview.savedUrl = url;
-        await updatePreviewSavedUrl(imgId, url);
-        await setSlotSelection(slotId, imgId);
-        await syncNovelDrawSavedFromPreview(messageId, preview, { slotId, savedUrl: url });
-        container.querySelector('img').src = url;
-        setImageState(container, ImageState.SAVED);
-        container.dataset.imgId = preview.imgId;
-        showToast(`已保存到: ${url}`, 'success', 5000);
-    } catch (e) {
-        console.error('[NovelDraw] 保存失败:', e);
-        void xbAlert('保存失败: ' + e.message, { title: '保存失败' });
-        setImageState(container, ImageState.PREVIEW);
     }
 }
 
@@ -2817,6 +2784,16 @@ async function generateAndInsertImages({
         if (!message) throw new NovelDrawError('消息不存在', ErrorType.PARSE);
 
         const signal = job.controller.signal;
+        // 手动点画图时 MVU 恰好还在处理这一层：先等它写完。平时不忙，这里不花时间。
+        if (!automatic && mvuActivityTracker?.isBusy()) {
+            onStateChange?.('llm', toScenePlannerProgress());
+            await waitForMessageSettled({
+                getText: () => readAttachedMessageText(ctx.chatId, messageId, message),
+                tracker: mvuActivityTracker,
+                signal,
+            });
+            if (signal.aborted) throw new NovelDrawError('已取消', ErrorType.ABORTED);
+        }
         const settings = cloneSettingsObject(getRuntimeSettings());
         const preset = cloneSettingsObject(getActiveParamsPreset());
 
@@ -2868,17 +2845,57 @@ async function generateAndInsertImages({
         if (isMessageBeingEdited(messageId)) {
             throw new ScenePlacementError('该楼层正在编辑，请保存或取消编辑后再配图。', 'SCENE_MESSAGE_EDITING');
         }
-        const originalMes = message.mes;
+        // originalMes / plannedMes 会随「只改了尾部标记」的正文变化一起挪动（MVU 变量卡在规划期间、
+        // 生图期间都可能改写正文尾部）。叙事内容真的变了才和以前一样拒绝写入。
+        let originalMes = message.mes;
+        let plannedMes = '';
+        let placementSourceText = sceneSource.sourceText;
+        let placements = tasks.map(task => task.placement);
         const replacedSlotIds = getSceneSlotIds(originalMes);
         const slotIds = tasks.map(() => generateSlotId());
         const results = new Array(tasks.length);
         let successCount = 0;
-        const strippedNow = normalizeMessageSceneSourceText(message.mes);
-        assertSceneSourceUnchanged(strippedNow, sceneSource.sourceHash);
-        const plannedMes = insertScenePlacementsPreservingSlots(originalMes, tasks.map((task, index) => ({
-            placement: task.placement,
+        const buildPlannedMes = () => insertScenePlacementsPreservingSlots(originalMes, placements.map((placement, index) => ({
+            placement,
             content: createPlaceholder(slotIds[index]),
         })), { block: true });
+        const rebaseOntoCurrentText = () => {
+            const currentText = message.mes;
+            const currentSource = normalizeMessageSceneSourceText(currentText);
+            const rebased = rebaseScenePlacements(placements, placementSourceText, currentSource);
+            const nextOriginal = currentText;
+            const previousOriginal = originalMes;
+            originalMes = nextOriginal;
+            try {
+                const nextPlanned = insertScenePlacementsPreservingSlots(nextOriginal, rebased.placements.map((placement, index) => ({
+                    placement,
+                    content: createPlaceholder(slotIds[index]),
+                })), { block: true });
+                placements = rebased.placements;
+                placementSourceText = currentSource;
+                plannedMes = nextPlanned;
+            } catch (error) {
+                originalMes = previousOriginal;
+                throw error;
+            }
+            if (placementLifecycle) {
+                placementLifecycle.originalMes = originalMes;
+                placementLifecycle.plannedMes = plannedMes;
+            }
+            if (rebased.rebased) console.info('[NovelDraw] 正文尾部标记被改写（变量卡），插图位置已映射到新正文');
+            return rebased.rebased;
+        };
+        const tryRebaseOntoCurrentText = () => {
+            try {
+                rebaseOntoCurrentText();
+                return true;
+            } catch (error) {
+                console.warn('[NovelDraw] 正文叙事内容已变化，无法沿用插图位置:', error?.message || error);
+                return false;
+            }
+        };
+        rebaseOntoCurrentText();
+        if (!plannedMes) plannedMes = buildPlannedMes();
 
         placementLifecycle = {
             message,
@@ -2889,6 +2906,7 @@ async function generateAndInsertImages({
             initialChatId,
             plannedMes,
             syncRenderedMessage: null,
+            tryRebase: tryRebaseOntoCurrentText,
             settled: false,
             // 占位符是否已经提前持久化进正文。后台任务链路删除后始终为 false：正文在生成结束时一次性写入。
             committedEarly: false,
@@ -2897,11 +2915,13 @@ async function generateAndInsertImages({
         // 前端停手 ≠ 取消后端任务。job.controller 一旦 abort，本地循环、DOM 更新全部停下；
         // 但只有用户亲手取消才允许把取消传导到后端，因为那一步会连带删掉已经生成好的结果。
         // 聊天切换、正文变化、扩展卸载都只是「这个页面不再照看它了」，任务要继续跑。
-        const { messageFormatting } = await import('../../../../../../../../script.js');
+        //
+        // 楼层重渲染必须走 rerenderChatMessage（酒馆 updateMessageBlock + MESSAGE_UPDATED）：
+        // 自己改 .mes_text 不发事件，酒馆助手不会把状态栏代码块换回 iframe。
+        // 规划文本还没写进 message.mes，这里只显示，不保存。
         const syncRenderedMessage = async (sourceText = plannedMes) => {
             if (isMessageBeingEdited(messageId)) return;
-            const formatted = messageFormatting(sourceText, message.name, message.is_system, message.is_user, messageId);
-            $(`[mesid="${messageId}"] .mes_text`).html(formatted);
+            await rerenderChatMessage(messageId, message, { text: sourceText });
         };
         const renderPendingSlots = () => {
             const settledSlotIds = new Set(results.filter(Boolean).map((item) => item.slotId));
@@ -2925,7 +2945,7 @@ async function generateAndInsertImages({
             await renderSharedPreviewsForMessage(messageId);
         };
         placementLifecycle.syncRenderedMessage = syncRenderedMessage;
-        if (message.mes !== originalMes) {
+        if (message.mes !== originalMes && !tryRebaseOntoCurrentText()) {
             throw new ScenePlacementError('正文在准备插图位置时发生变化，未写入图片。', 'SCENE_SOURCE_CHANGED');
         }
         await syncRenderedMessage();
@@ -2975,6 +2995,13 @@ async function generateAndInsertImages({
                 return false;
             }
             if (!placementLifecycle.committedEarly && message.mes !== originalMes) {
+                if (tryRebaseOntoCurrentText()) {
+                    // 只是尾部标记变了（MVU 补状态栏占位符等），宿主多半也重渲染了楼层：
+                    // 按新的规划文本把占位卡画回去，结束时再整楼同步一次。
+                    requiresFinalDomSync = true;
+                    void recoverRenderedSlots().catch(error => console.warn('[NovelDraw] 正文尾部变化后的重渲染失败:', error));
+                    return true;
+                }
                 console.warn('[NovelDraw] 正文已变化，中止生成');
                 terminationReason = 'source_changed';
                 job.controller.abort();
@@ -3133,8 +3160,8 @@ async function generateAndInsertImages({
             const abortMsgValid = abortCtx.chatId === initialChatId && abortCtx.chat?.[messageId] === message;
             const canCommit = !placementLifecycle.committedEarly
                 && abortMsgValid
-                && message.mes === originalMes
-                && !isMessageBeingEdited(messageId);
+                && !isMessageBeingEdited(messageId)
+                && (message.mes === originalMes || tryRebaseOntoCurrentText());
             const canSync = abortMsgValid
                 && !isMessageBeingEdited(messageId)
                 && (placementLifecycle.committedEarly || canCommit);
@@ -3190,8 +3217,12 @@ async function generateAndInsertImages({
             onStateChange?.('success', { success: successCount, total: tasks.length, detached: true });
             return { success: successCount, total: tasks.length, results: results.filter(Boolean), aborted: false, terminationReason: 'detached' };
         }
+        let rebasedAtCommit = false;
         const shouldUpdateDom = !isMessageBeingEdited(messageId)
-            && (placementLifecycle.committedEarly || message.mes === originalMes);
+            && (placementLifecycle.committedEarly
+                || message.mes === originalMes
+                || (rebasedAtCommit = tryRebaseOntoCurrentText()));
+        if (rebasedAtCommit) requiresFinalDomSync = true;
         if (!placementLifecycle.committedEarly && !shouldUpdateDom) {
             placementLifecycle.settled = true;
             throw new ScenePlacementError(
@@ -3201,13 +3232,23 @@ async function generateAndInsertImages({
         }
         if (!placementLifecycle.committedEarly) {
             try {
-                await commitSceneSlotReplacement({
+                const committedText = await commitSceneSlotReplacement({
                     message,
                     stagedText: plannedMes,
                     replacedSlotIds,
                     persist: persistChatSilently,
                 });
                 if (replacedSlotIds.length > 0) requiresFinalDomSync = true;
+                guardCommittedSlotsAgainstMvu({
+                    messageId,
+                    message,
+                    chatId: initialChatId,
+                    committedText,
+                    slotIds,
+                    placements,
+                    placementSourceText,
+                    replacedSlotIds,
+                });
             } catch (error) {
                 requiresFinalDomSync = true;
                 console.warn('[NovelDraw] 替换旧图片槽位的保存未确认，已保留旧槽位:', error);
@@ -3216,14 +3257,7 @@ async function generateAndInsertImages({
 
         if (shouldUpdateDom && requiresFinalDomSync) {
             try {
-                const formatted = messageFormatting(
-                    message.mes,
-                    message.name,
-                    message.is_system,
-                    message.is_user,
-                    messageId
-                );
-                $('[mesid="' + messageId + '"] .mes_text').html(formatted);
+                await rerenderChatMessage(messageId, message);
                 await renderSharedPreviewsForMessage(messageId);
             } catch (error) {
                 console.warn('[NovelDraw] 最终 DOM 同步失败:', error);
@@ -3244,22 +3278,21 @@ async function generateAndInsertImages({
         if (placementLifecycle && !placementLifecycle.settled) {
             const {
                 message,
-                originalMes,
                 slotIds,
                 results,
                 initialChatId,
-                plannedMes,
                 syncRenderedMessage,
                 committedEarly,
+                tryRebase,
             } = placementLifecycle;
             const currentCtx = getContext();
             const canCommit = !committedEarly
                 && currentCtx.chatId === initialChatId
                 && currentCtx.chat?.[messageId] === message
-                && message.mes === originalMes
-                && !isMessageBeingEdited(messageId);
+                && !isMessageBeingEdited(messageId)
+                && (message.mes === placementLifecycle.originalMes || tryRebase?.() === true);
             if (canCommit) {
-                setActiveMessageText(message, commitSettledScenePlacements(plannedMes, {
+                setActiveMessageText(message, commitSettledScenePlacements(placementLifecycle.plannedMes, {
                     allSlotIds: slotIds,
                     settledSlotIds: results.filter(Boolean).map(item => item.slotId),
                 }));
@@ -3270,6 +3303,70 @@ async function generateAndInsertImages({
         }
         releaseGenerationJob(job);
     }
+}
+
+function readAttachedMessageText(chatId, messageId, message) {
+    const live = getContext();
+    if (String(live?.chatId || '') !== String(chatId || '') || live?.chat?.[messageId] !== message) return null;
+    return String(message.mes ?? '');
+}
+
+// MVU 在处理楼层时会先读一份正文、await 若干步（变量写入、事件派发）后再整段写回
+// （bundle 里的 Un / $n 流程）。插件恰好在这个窗口里保存了占位符，就会被旧副本盖掉。
+// 保存后若观察到 MVU 活动、本批槽位全部消失而叙事没变，就按原位置补回；
+// 没有 MVU 活动时的变化来自用户或其它扩展，不插手。
+function guardCommittedSlotsAgainstMvu({
+    messageId,
+    message,
+    chatId,
+    committedText,
+    slotIds,
+    placements,
+    placementSourceText,
+    replacedSlotIds = [],
+}) {
+    const tracker = mvuActivityTracker;
+    if (!tracker?.isPresent()) return;
+    const ownIndexes = slotIds
+        .map((slotId, index) => (isSceneSlotAlive(committedText, slotId) ? index : -1))
+        .filter(index => index >= 0);
+    if (ownIndexes.length === 0) return;
+    const activityBefore = tracker.getActivityCount();
+    const busyAtCommit = tracker.isBusy();
+
+    void (async () => {
+        const readText = () => readAttachedMessageText(chatId, messageId, message);
+        await waitForMessageSettled({ getText: readText, tracker, timeoutMs: 8000, mvuGraceMs: 0 });
+        const current = readText();
+        if (current === null || current === committedText || !moduleInitialized) return;
+        if (!busyAtCommit && tracker.getActivityCount() === activityBefore) return;
+        if (ownIndexes.some(index => isSceneSlotAlive(current, slotIds[index]))) return;
+        if (isMessageBeingEdited(messageId)) return;
+
+        let rebased;
+        try {
+            rebased = rebaseScenePlacements(
+                ownIndexes.map(index => placements[index]),
+                placementSourceText,
+                normalizeMessageSceneSourceText(current),
+            );
+        } catch {
+            return;
+        }
+        const restored = removeSceneSlotPlaceholders(
+            insertScenePlacementsPreservingSlots(current, rebased.placements.map((placement, order) => ({
+                placement,
+                content: createPlaceholder(slotIds[ownIndexes[order]]),
+            })), { block: true }),
+            replacedSlotIds,
+        );
+        if (readText() !== current) return;
+        setActiveMessageText(message, restored);
+        await persistChatSilently();
+        console.warn('[NovelDraw] 变量卡用旧正文覆盖了插图槽位，已按原位置补回');
+        await rerenderChatMessage(messageId, message);
+        await renderSharedPreviewsForMessage(messageId);
+    })().catch(error => console.warn('[NovelDraw] 插图槽位补回失败:', error));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3299,8 +3396,23 @@ async function autoGenerateForLastAI() {
     }
     
     autoBusy = true;
-    
+
     try {
+        // 酒馆停止生成 ≠ 正文定稿：MVU 变量卡还要解析 <UpdateVariable>、可能再请求一次额外模型，
+        // 然后改写正文尾部并重渲染。等这一轮落定（MVU 事件 + 正文 800ms 不变，最多 20 秒）再规划插图位置。
+        const settle = await waitForMessageSettled({
+            getText: () => readAttachedMessageText(ctx.chatId, lastIdx, lastMessage),
+            tracker: mvuActivityTracker,
+        });
+        if (settle.status === 'missing' || !moduleInitialized || !isModuleEnabled() || getSettings().mode !== 'auto') return;
+        if ((getContext().chat || []).length - 1 !== lastIdx
+            || lastMessage.extra?.xb_novel_auto_done
+            || hasGenerationJob(lastIdx)
+            || stripDrawImageSlots(lastMessage.mes).trim().length < 50) return;
+        if (settle.status === 'timeout') {
+            console.warn(`[NovelDraw] 自动模式：等正文落定超时（${settle.waitedMs}ms），照常开始`);
+        }
+
         const { setStateForMessage, setFloatingState, FloatState, ensureNovelDrawPanel } = await import('./floating-panel.js');
         const floatingOn = s.showFloatingButton === true;
         const floorOn = s.showFloorButton !== false;
@@ -3581,6 +3693,15 @@ function applyManualTierFallback(result, manualTier) {
  * 设置页打开（FRAME_READY）和 API Key 变化后调用：免费的 GET /user/subscription（不扣 Anlas），
  * 直连失败走插件，都失败用手动档位。结果发 SUBSCRIPTION_DATA 给设置页。
  */
+// 本页 V5 成功张数：设置页拿它和电量变化推算「每张耗多少电」。出图后免费刷新一次订阅。
+let v5SuccessCount = 0;
+let v5RefreshTimer = null;
+function noteV5Success() {
+    v5SuccessCount += 1;
+    clearTimeout(v5RefreshTimer);
+    v5RefreshTimer = setTimeout(() => { void refreshSubscriptionForFrame({ force: true }); }, 1500);
+}
+
 async function refreshSubscriptionForFrame({ force = false } = {}) {
     const settings = getRuntimeSettings();
     const apiKey = String(settings.apiKey || '').trim();
@@ -3602,10 +3723,11 @@ async function refreshSubscriptionForFrame({ force = false } = {}) {
     }
     const result = entry.result || await entry.pending;
     if (subscriptionCache !== entry) return;
-    const manualTier = normalizeSubTier(getRuntimeSettings().subTier);
+    const manualTier = 'auto'; // 档位下拉已删，只认自动识别
     const view = applyManualTierFallback(result, manualTier);
     postToSettingsFrame({
         type: 'SUBSCRIPTION_DATA',
+        v5Count: v5SuccessCount,
         // 不能叫 source：postToIframe 会被它覆盖掉消息来源标识
         subscriptionSource: view.source,
         subscription: view.subscription,
@@ -3648,7 +3770,8 @@ async function handleVibeEncodeRequest(data) {
         }
         const image = await readVibeAssetImageBase64(await store.getAsset(assetId));
         if (!image) throw new Error('这个氛围没有原图（从 .naiv4vibe 导入且文件不带图），无法编码');
-        const { buffer, via } = await encodeVibe({
+        // 编码也打 NovelAI，和生图共用同一条队列 + 跨标签页锁，避免并发请求。
+        const { buffer, via } = await enqueueImageRequest(() => encodeVibe({
             sendMode: settings.sendMode,
             hasBackendCapability: async capability => (await checkBackendPluginStatus()).capabilities?.includes(capability) === true,
             image,
@@ -3659,6 +3782,8 @@ async function handleVibeEncodeRequest(data) {
             insecure: settings.insecureTLS === true,
             timeout: Number(settings.timeout) || DEFAULT_SETTINGS.timeout,
             getHeaders: getRequestHeaders,
+        }), {
+            onQueued: ({ ahead }) => console.log(`[NovelDraw] 氛围编码排队中，前方 ${ahead} 个请求`),
         });
         const bytes = new Uint8Array(buffer);
         await store.putEncoding({ assetId, model, informationExtracted, token: bytesToBase64(bytes), bytes: bytes.byteLength, origin: 'api' });
@@ -3960,14 +4085,34 @@ async function handleFrameMessage(event) {
 
 
         case 'SAVE_PARAMS_PRESET': {
+            // autosave=true：设置页防抖自动保存，只带当前这一个预设（paramsPreset），按 id 替换，
+            // 不整表覆盖（避免和新建/导入等并发操作互相冲掉）；成功时不回传 INIT_DATA（否则会重填正在编辑的表单）。
+            const single = data.paramsPreset && typeof data.paramsPreset === 'object' && data.paramsPreset.id
+                ? data.paramsPreset
+                : null;
+            let found = !single;
             const ok = await updateSettingsPersistent((settings) => {
-                if (data.selectedParamsPresetId) settings.selectedParamsPresetId = data.selectedParamsPresetId;
-                if (Array.isArray(data.paramsPresets) && data.paramsPresets.length > 0) {
+                if (single) {
+                    const index = settings.paramsPresets.findIndex(p => p.id === single.id);
+                    if (index < 0) return;
+                    found = true;
+                    settings.paramsPresets[index] = single;
+                }
+                if (data.selectedParamsPresetId
+                    && (!data.autosave || settings.paramsPresets.some(p => p.id === data.selectedParamsPresetId))) {
+                    settings.selectedParamsPresetId = data.selectedParamsPresetId;
+                }
+                if (!single && Array.isArray(data.paramsPresets) && data.paramsPresets.length > 0) {
                     settings.paramsPresets = data.paramsPresets;
                 }
-            }, '已保存', { target: 'params' });
-            if (ok) {
-                sendInitData();
+            }, '已保存', { target: 'params', notify: !data.autosave });
+            if (data.autosave) {
+                const saved = ok && found;
+                postStatus(saved ? 'success' : 'error', saved ? '已自动保存' : ok ? '预设已不存在' : '自动保存失败', 'params');
+                if (!saved) sendInitData();
+            }
+            if (ok && found) {
+                if (!data.autosave) sendInitData();
                 try {
                     const { refreshPresetSelect } = await import('./floating-panel.js');
                     refreshPresetSelect?.();
@@ -4075,39 +4220,7 @@ async function handleFrameMessage(event) {
             break;
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // 新增：云端预设
-        // ═══════════════════════════════════════════════════════════════
-        case 'OPEN_CLOUD_PRESETS': {
-            // 导入前先起名（预填云端预设自己的名字）；取消 = 什么都不导入，返回 false 让面板不显示「成功」。
-            openCloudPresetsModal(async (presetData) => {
-                const { preset: newPreset, warnings: importWarnings } = parsePresetData(presetData, generateSlotId);
-                const picked = await askPresetName({
-                    presets: getSettings().paramsPresets,
-                    defaultName: newPreset.name,
-                    title: '导入云端预设',
-                    message: '预设名称：',
-                    ...createPresetNameDialogs({ xbPrompt, xbChoose }),
-                });
-                if (!picked) return false;
-                let imported = null;
-                const ok = await updateSettingsPersistent((settings) => {
-                    // 保存队列里设置可能刚变过：此时再冲突一律按自动改名，不悄悄覆盖
-                    imported = applyNamedPresetImport(settings.paramsPresets, newPreset, {
-                        name: picked.name,
-                        onNameConflict: picked.onNameConflict || 'rename',
-                    });
-                    settings.paramsPresets = imported.presets;
-                    settings.selectedParamsPresetId = imported.presetId;
-                }, `已导入: ${picked.name}`, { target: 'params' });
-                if (ok) {
-                    await notifySettingsUpdated();
-                    sendInitData();
-                    if (importWarnings.length) showToast(importWarnings.join('；'), 'info', 5000);
-                }
-            });
-            break;
-        }
+        // 小白X 自带的云端预设服务已去掉：参数预设只能从画廊里的图导入（IMPORT_GALLERY_PRESET）
         case 'EXPORT_CURRENT_PRESET': {
             const s = getSettings();
             const presetId = data.presetId || s.selectedParamsPresetId;
@@ -4266,9 +4379,11 @@ async function handleFrameMessage(event) {
                 const saved = ok && presetFound;
                 postStatus(
                     saved ? 'success' : 'error',
-                    saved ? '提示词预设已保存' : ok ? '目标提示词预设已不存在' : '保存失败',
+                    saved ? (data.autosave ? '已自动保存' : '提示词预设已保存') : ok ? '目标提示词预设已不存在' : '保存失败',
                     statusTarget,
                 );
+                // 自动保存成功时不回传 INIT_DATA，避免重填正在编辑的 textarea；失败仍回传真实状态
+                if (data.autosave && saved) break;
             }
             sendInitData();
             break;
@@ -4418,32 +4533,6 @@ async function handleFrameMessage(event) {
             postStatus('success', '已选择', 'gallery');
             break;
 
-        case 'SAVE_GALLERY_IMAGE': {
-            try {
-                const preview = await getPreview(data.imgId);
-                if (!preview?.base64) {
-                    postStatus('error', '图片数据不存在');
-                    break;
-                }
-                const charName = preview.characterName || getChatCharacterName();
-                const image = getBase64ImagePayload(preview.base64);
-                const url = await saveBase64AsFile(image.base64, charName, `novel_${data.imgId}`, image.format);
-                preview.savedUrl = url;
-                await updatePreviewSavedUrl(data.imgId, url);
-                if (Number.isFinite(preview.messageId)) await syncNovelDrawSavedFromPreview(preview.messageId, preview, { savedUrl: url });
-                {
-                    const iframe = document.getElementById('xbdraw-novel-draw-iframe');
-                    if (iframe) postToIframe(iframe, { type: 'GALLERY_IMAGE_SAVED', imgId: data.imgId, savedUrl: url }, 'XBDraw-NovelDraw');
-                }
-                sendInitData();
-                showToast(`已保存: ${url}`, 'success', 5000);
-            } catch (e) {
-                console.error('[NovelDraw] 保存失败:', e);
-                postStatus('error', '保存失败: ' + e.message);
-            }
-            break;
-        }
-
         case 'LOAD_CHARACTER_PREVIEWS': {
             try {
                 const charName = data.charName;
@@ -4513,6 +4602,8 @@ async function handleFrameMessage(event) {
             try {
                 postStatus('loading', '生成中...');
                 const t0 = Date.now();
+                // 设置页点「生成」前会立即冲刷自动保存；等排队中的设置写入完成，确保用的是最新预设
+                await settingsUpdateQueue;
                 const preset = getActiveParamsPreset();
                 const tags = (typeof data.tags === 'string' && data.tags.trim()) ? data.tags.trim() : '1girl, smile';
                 const scene = joinTags(preset?.positivePrefix, tags);
@@ -4576,6 +4667,9 @@ export async function initNovelDraw() {
     if (initGeneration !== moduleLifecycleGeneration || window?.isXbDrawEnabled === false) return false;
 
     moduleInitialized = true;
+    mvuActivityTracker?.stop();
+    mvuActivityTracker = createMvuActivityTracker({ eventSource });
+    mvuActivityTracker.start();
     initAfterAiGate();
     afterAiGateDispose?.();
     afterAiGateDispose = registerAfterAiHandler(MODULE_KEY, ({ chatId, messageId }) => {
@@ -4681,7 +4775,6 @@ export async function initNovelDraw() {
         generateImagesFromText,
         generateAndInsertImages,
         refreshSingleImage,
-        saveSingleImage,
         testApiConnection,
         openSettings: openNovelDrawSettings,
         createPlaceholder,
@@ -4711,6 +4804,8 @@ export async function cleanupNovelDraw() {
     moduleInitialized = false;
     settingsCache = null;
     settingsLoaded = false;
+    mvuActivityTracker?.stop();
+    mvuActivityTracker = null;
     events.cleanup();
     stopSharedDrawPreviewRuntime();
     afterAiGateDispose?.();

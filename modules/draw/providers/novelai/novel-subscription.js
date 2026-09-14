@@ -30,10 +30,13 @@ export function summarizeSubscription(raw) {
             percent: Number.isFinite(Number(raw.usage.percent)) ? Number(raw.usage.percent) : undefined,
         }
         : undefined;
+    const steps = raw.trainingStepsLeft && typeof raw.trainingStepsLeft === 'object' ? raw.trainingStepsLeft : null;
+    const anlas = steps ? (Number(steps.fixedTrainingStepsLeft) || 0) + (Number(steps.purchasedTrainingSteps) || 0) : undefined;
     return {
         tier,
         active: raw.active === true,
         expiresAt: Number(raw.expiresAt) || 0,
+        ...(anlas !== undefined ? { anlas } : {}),
         ...(usage ? { usage } : {}),
     };
 }

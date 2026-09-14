@@ -3,17 +3,17 @@
 // - 缩放：双指捏合 / 滚轮（触控板捏合）以光标为中心缩放，放大后拖动平移，双击（双指点）在「适应」和 2 倍之间切换；范围 1–6 倍。
 // - 切版本：只在适应大小时左右滑 / 左右键切换；放大时横滑是平移。切版本、重新打开都回到适应大小。
 // - 长按（或鼠标右键）图片在按压位置弹出操作面板，任何缩放下都能用。
-// 不 import 酒馆模块：保存、设为显示、下载都由调用方（gallery-cache.js）注入，独立页面也能直接用。
+// - 只有关闭按钮和左右切版本箭头，没有底栏。
+// 不 import 酒馆模块：下载由调用方（gallery-cache.js）注入，独立页面也能直接用。
 //
 // 扩展点：registerLightboxAction({ id, icon, label, when(ctx), run(ctx), order, surfaces? })
 //   是 image-action-menu.js 里 registerImageAction 的兼容包装：不写 surfaces 时只进灯箱；
 //   写 surfaces: ['chat', 'lightbox'] 就两处都有（「同步到 Gallery」就是这样注册的）。
 //   ctx = { surface, slotId, messageId, preview, index, total, download(), lightbox }
-// 内置两项：保存到服务器（只对未保存的预览显示）、下载（下载原图）。
+// 内置一项：下载（下载原图）。
 
 import { bindGestures } from './chat-image-gestures.js';
 import { ensureRemixIcon } from './remixicon-loader.js';
-import { XB_ACCENT_HOVER, xbAccentSoft } from './xb-theme.js';
 import { createImageActionMenu, ensureImageMenuStyles, listImageActions, registerImageAction } from './image-action-menu.js';
 
 export const LIGHTBOX_OVERLAY_ID = 'nd-gallery-overlay';
@@ -123,14 +123,6 @@ const LIGHTBOX_CSS = `
 .nd-lb-img-wrap.panning { cursor: grabbing; }
 .nd-lb-img { display: block; max-width: 100%; max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); margin: 0 auto; border-radius: 10px; transform-origin: 50% 50%; will-change: transform; -webkit-user-drag: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
 .nd-lb-img.zoom-anim { transition: transform 0.18s ease; }
-.nd-lb-badge { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 6px; background: rgba(77, 171, 111, 0.9); color: #ffffff; font-size: 11px; pointer-events: none; transition: opacity 0.12s; }
-.nd-lb-img-wrap.zoomed .nd-lb-badge { opacity: 0; }
-.nd-lb-badge[hidden] { display: none !important; }
-.nd-lb-bar { position: relative; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; font-size: 12px; color: #9b9b98; }
-.nd-lb-use { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; margin: 0; padding: 4px 10px; border-radius: 6px; background: ${xbAccentSoft(0.18)}; color: ${XB_ACCENT_HOVER}; font: inherit; font-size: 12px; cursor: pointer; }
-.nd-lb-use:hover { background: ${xbAccentSoft(0.26)}; }
-.nd-lb-use[hidden] { display: none !important; }
-.nd-lb-hint { color: #6b6b68; }
 @media (max-width: 600px), (pointer: coarse) {
     .nd-lb-nav { display: none; }
     .nd-lb-img-wrap { max-width: calc(100vw - 32px); }
@@ -169,9 +161,9 @@ function createButton(doc, className, iconClass, label) {
 /**
  * options: {
  *   previews,            // 历史版本数组，index 0 = 最新
- *   startIndex, selectedIndex, slotId, messageId,
+ *   startIndex, slotId, messageId,
  *   getUrl(preview),     // 显示用 URL
- *   onUse(preview, index)?, onSave(preview, index)? -> url, onDownload(preview)?,
+ *   onDownload(preview)?,
  *   onError(error, kind)?, onClose()?, document?
  * }
  */
@@ -183,11 +175,7 @@ export function openImageLightbox(options = {}) {
     ensureLightboxStyles(doc);
 
     const clampIndex = value => Math.min(previews.length - 1, Math.max(0, Number.parseInt(value, 10) || 0));
-    const state = {
-        index: clampIndex(options.startIndex),
-        selectedIndex: options.selectedIndex == null ? clampIndex(options.startIndex) : clampIndex(options.selectedIndex),
-        busy: false,
-    };
+    const state = { index: clampIndex(options.startIndex) };
     const getUrl = typeof options.getUrl === 'function'
         ? options.getUrl
         : (preview => preview?.savedUrl || (preview?.base64 ? (String(preview.base64).startsWith('data:') ? preview.base64 : `data:image/png;base64,${preview.base64}`) : ''));
@@ -215,25 +203,10 @@ export function openImageLightbox(options = {}) {
     img.alt = '';
     img.draggable = false;
     img.setAttribute('data-swipe-ignore', 'true');
-    const badge = doc.createElement('span');
-    badge.className = 'nd-lb-badge';
-    badge.textContent = '已保存';
-    wrap.append(img, badge);
+    wrap.append(img);
     stage.append(olderBtn, wrap, newerBtn);
 
-    const bar = doc.createElement('div');
-    bar.className = 'nd-lb-bar';
-    const info = doc.createElement('span');
-    info.className = 'nd-lb-info';
-    const useBtn = createButton(doc, 'nd-lb-use', 'ri-check-line');
-    useBtn.append('设为显示');
-    const hint = doc.createElement('span');
-    hint.className = 'nd-lb-hint';
-    const coarse = doc.defaultView?.matchMedia?.('(pointer: coarse)')?.matches;
-    hint.textContent = coarse ? '双指缩放 · 长按更多操作' : '滚轮缩放 · 右键或长按更多操作';
-    bar.append(info, useBtn, hint);
-
-    overlay.append(closeBtn, stage, bar);
+    overlay.append(closeBtn, stage);
     doc.body.appendChild(overlay);
 
     const menu = createImageActionMenu({
@@ -363,13 +336,11 @@ export function openImageLightbox(options = {}) {
     const controller = {
         element: overlay,
         menuElement: menu.element,
-        canSave: typeof options.onSave === 'function',
         get index() { return state.index; },
         get total() { return previews.length; },
         get preview() { return previews[state.index]; },
         isMenuOpen: () => menu.isOpen(),
         go,
-        save,
         download,
         close: closeImageLightbox,
         openMenuAt,
@@ -403,12 +374,8 @@ export function openImageLightbox(options = {}) {
         const preview = previews[state.index];
         const url = getUrl(preview) || '';
         if (img.getAttribute('src') !== url) img.src = url;
-        badge.hidden = !preview?.savedUrl;
         olderBtn.disabled = state.index >= previews.length - 1;
         newerBtn.disabled = state.index <= 0;
-        const date = preview?.timestamp ? new Date(preview.timestamp).toLocaleString() : '';
-        info.textContent = `版本 ${previews.length - state.index} / ${previews.length}${date ? ` · ${date}` : ''}`;
-        useBtn.hidden = typeof options.onUse !== 'function' || state.index === state.selectedIndex;
     }
 
     function go(delta) {
@@ -419,23 +386,6 @@ export function openImageLightbox(options = {}) {
         resetZoom();
         render();
         return true;
-    }
-
-    async function save() {
-        const preview = previews[state.index];
-        if (!controller.canSave || !preview || preview.savedUrl || state.busy) return null;
-        state.busy = true;
-        try {
-            const url = await options.onSave(preview, state.index);
-            if (url) preview.savedUrl = url;
-            return url || null;
-        } catch (error) {
-            options.onError ? options.onError(error, 'save') : console.error('[XBDrawLightbox] 保存失败:', error);
-            return null;
-        } finally {
-            state.busy = false;
-            if (current === controller) render();
-        }
     }
 
     async function download() {
@@ -497,23 +447,12 @@ export function openImageLightbox(options = {}) {
     closeBtn.addEventListener('click', (event) => { event.stopPropagation(); closeImageLightbox(); });
     olderBtn.addEventListener('click', (event) => { event.stopPropagation(); go(1); });
     newerBtn.addEventListener('click', (event) => { event.stopPropagation(); go(-1); });
-    useBtn.addEventListener('click', async (event) => {
-        event.stopPropagation();
-        const index = state.index;
-        try {
-            await options.onUse?.(previews[index], index);
-            state.selectedIndex = index;
-            render();
-        } catch (error) {
-            options.onError ? options.onError(error, 'use') : console.error('[XBDrawLightbox] 设为显示失败:', error);
-        }
-    });
 
     overlay.addEventListener('click', (event) => {
         if (menu.element.contains(event.target)) return;
         // 先关面板，再关灯箱
         if (menu.isOpen()) { closeMenu(); return; }
-        if (event.target === overlay || event.target === stage || event.target === bar) closeImageLightbox();
+        if (event.target === overlay || event.target === stage) closeImageLightbox();
     });
 
     const onKeyDown = (event) => {

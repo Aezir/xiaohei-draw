@@ -100,7 +100,7 @@ export function planFreeReset(config, subscriptionView, { overrideSize = 'defaul
         parts.push(`尺寸 ${config.width}×${config.height}→${apply.width ?? config.width}×${apply.height ?? config.height}`);
     }
     if (apply.disableVibeIndexes.length) parts.push(`关闭 ${apply.disableVibeIndexes.length} 个超出的氛围`);
-    const tail = apply.clearOverride ? '（表单改动点保存才生效；尺寸覆盖是全局快捷设置，已直接取消）' : '（只改了表单，点保存才生效）';
+    const tail = apply.clearOverride ? '（已自动保存到当前预设；尺寸覆盖是全局快捷设置，已直接取消）' : '（已自动保存到当前预设）';
     const message = parts.length ? `已复位为免费配置：${parts.join('、')}${tail}` : '当前参数已经满足免费条件';
     const finalConfig = overridden && !apply.clearOverride
         ? result.config
@@ -230,10 +230,11 @@ function render() {
     }
     const subStatus = $('nd_sub_status');
     if (subStatus) subStatus.textContent = bar.view.detail;
+    renderAccountStats();
     const reset = $('nd_cost_reset');
     if (reset) {
         reset.disabled = !bar.view.verified;
-        reset.title = bar.view.verified ? '把步数、尺寸等改成免费配置（不动提示词，不自动保存）' : '档位未知，无法确认免费条件';
+        reset.title = bar.view.verified ? '把步数、尺寸等改成免费配置（不动提示词，改完自动保存到当前预设）' : '档位未知，无法确认免费条件';
     }
     applyFreeMarks(config);
 }
@@ -280,7 +281,7 @@ function runReset() {
     render();
 }
 
-/** 生成按钮点击时调用；Promise 结果为 false 表示用户取消。savedPreset = 宿主实际要用的已保存预设。 */
+/** 生成按钮点击时调用；Promise 结果为 false 表示用户取消。savedPreset = 宿主实际要用的预设（点生成前表单已自动保存进去）。 */
 async function confirmGenerate({ savedPreset } = {}) {
     render();
     const estimates = [bar.estimate];
@@ -292,7 +293,7 @@ async function confirmGenerate({ savedPreset } = {}) {
     const check = needsGenerateConfirm({ estimates, models });
     if (!check.confirm) return true;
     return xbConfirm(`- ${check.reasons.join('\n- ')}`, {
-        title: '生成前确认', detail: '生成用的是已保存的预设；表单改动需先保存。', okLabel: '仍要生成', icon: 'ri-coins-line',
+        title: '生成前确认', okLabel: '仍要生成', icon: 'ri-coins-line',
     });
 }
 
@@ -319,6 +320,21 @@ function init() {
         else if (data.type === 'OVERRIDE_SIZE') setOverrideSize(data.overrideSize);
     });
     render();
+}
+
+// API 页账户数字：剩余 Anlas、电量、还可生成 V5 张数。
+// 换算和 nai-gallery 一致（跟 NAI 前端一样）：1% 电量 ≈ 17.3 张 V5（普通尺寸、≤28 步）。
+const V5_IMAGES_PER_PERCENT = 17.3;
+
+function renderAccountStats() {
+    const sub = bar.data?.subscription || null;
+    const set = (id, text) => { const node = $(id); if (node) node.textContent = text; };
+    set('nd_anlas_left', Number.isFinite(sub?.anlas) ? sub.anlas.toLocaleString() : '—');
+    const usage = sub?.usage;
+    const hasPercent = Number.isFinite(usage?.percent);
+    const left = hasPercent ? (usage.isNegative ? 0 : Math.min(100, Math.max(0, usage.percent))) : 0;
+    set('nd_battery', !hasPercent ? '—' : usage.isNegative ? '已透支，V5 现在扣 Anlas' : `${+left.toFixed(1)}%`);
+    set('nd_v5_left', hasPercent ? `约 ${Math.round(V5_IMAGES_PER_PERCENT * left)} 张（普通尺寸、≤28 步）` : '—');
 }
 
 function handleSubscriptionData(data) {

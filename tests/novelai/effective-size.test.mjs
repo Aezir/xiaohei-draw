@@ -110,5 +110,6 @@ test('复位 without override behaves as before', () => {
     const plan = planFreeReset(form({ width: 1600, height: 1600 }), OPUS);
     assert.equal(plan.apply.clearOverride, false);
     assert.ok(plan.apply.width * plan.apply.height <= 1048576);
-    assert.match(plan.message, /只改了表单/);
+    assert.match(plan.message, /已自动保存到当前预设/);
+    assert.doesNotMatch(plan.message, /点保存/);
 });

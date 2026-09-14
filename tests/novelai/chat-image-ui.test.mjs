@@ -217,15 +217,17 @@ test('编辑提示词窗口：真实卡和失败卡都是「保存并重新生�
     assert.equal(/保存并重试|>保存</.test(real + failed), false);
 });
 
-test('灯箱操作注册表：内置两项 + 扩展项，按 when 过滤；标签「下载」', () => {
+test('灯箱操作注册表：内置只有「下载」+ 扩展项，按 when 过滤；没有保存到服务器', () => {
     const base = listLightboxActions().map(a => a.id);
-    assert.deepEqual(base.slice(0, 2), ['save-to-server', 'download-original']);
+    assert.deepEqual(base.slice(0, 1), ['download-original']);
+    assert.equal(base.includes('save-to-server'), false);
+    assert.equal(listLightboxActions().some(a => a.label === '保存到服务器'), false);
     assert.equal(listLightboxActions().find(a => a.id === 'download-original').label, '下载');
     const unregister = registerLightboxAction({ id: 'gallery-test', icon: 'ri-image-line', label: '同步到 Gallery', order: 30, when: ctx => !!ctx.preview, run() {} });
-    const lightbox = { canSave: true, download() {} };
+    const lightbox = { download() {} };
     const unsaved = { preview: { base64: 'AAA' }, lightbox };
     const saved = { preview: { savedUrl: '/a.png' }, lightbox };
-    assert.deepEqual(listLightboxActions(unsaved).map(a => a.id), ['save-to-server', 'download-original', 'gallery-test']);
+    assert.deepEqual(listLightboxActions(unsaved).map(a => a.id), ['download-original', 'gallery-test']);
     assert.deepEqual(listLightboxActions(saved).map(a => a.id), ['download-original', 'gallery-test']);
     // registerLightboxAction 不写 surfaces = 只进灯箱
     assert.equal(listImageActions(null, 'chat').some(a => a.id === 'gallery-test'), false);
@@ -235,7 +237,7 @@ test('灯箱操作注册表：内置两项 + 扩展项，按 when 过滤；标�
     assert.throws(() => registerLightboxAction({ id: 'x' }), TypeError);
 });
 
-test('共享操作注册表：聊天长按面板只有「下载」+ 两处都注册的项；保存到服务器只在灯箱', () => {
+test('共享操作注册表：聊天长按面板只有「下载」+ 两处都注册的项；只进灯箱的项不进聊天', () => {
     const chatCtx = { surface: 'chat', preview: { base64: 'AAA' }, download() {} };
     assert.deepEqual(listImageActions(chatCtx, 'chat').map(a => [a.id, a.label]), [['download-original', '下载']]);
     const off = registerLightboxAction({ id: 'both-test', label: '同步到 Gallery', icon: 'ri-image-add-line', order: 30, surfaces: ['chat', 'lightbox'], when: ctx => !!ctx.preview, run() {} });

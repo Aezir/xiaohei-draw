@@ -38,6 +38,15 @@ export const DEFAULT_MODEL_CONFIGS = {
         sendTemperature: true,
         toolMode: 'tagged-json',
     },
+    'sillytavern-current': {
+        baseUrl: '',
+        model: '',
+        apiKey: '',
+        temperature: 1,
+        maxTokens: DEFAULT_MAX_TOKENS,
+        sendTemperature: true,
+        toolMode: 'tagged-json',
+    },
     'sillytavern-openai-compatible': {
         baseUrl: '',
         model: 'gpt-4o-mini',

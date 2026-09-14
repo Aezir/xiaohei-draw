@@ -43,7 +43,7 @@ const TRICKY = [
 
 test('默认预设 + 测试提示词 + 林霏开用例都截到了', () => {
     assert.ok(presetStrings.length >= 4, `presets: ${presetStrings.length}`);
-    assert.equal(testTags, '1girl, smile, upper body, simple background');
+    assert.equal(testTags, ''); // 测试提示词默认留空（用户要求）
     assert.equal(linBlocks.length, 2);
 });
 

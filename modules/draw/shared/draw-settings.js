@@ -153,6 +153,12 @@ export async function loadSharedDrawSettings() {
     return settingsCache;
 }
 
+// 设置迁移已经把过滤规则写回存储后，若共享缓存早已加载，同步一下，免得本次会话还用旧规则。
+export function syncSharedMessageFilterRulesCache(rules) {
+    if (!settingsCache) return;
+    settingsCache.messageFilterRules = normalizeSharedDrawSettings({ messageFilterRules: rules }).messageFilterRules;
+}
+
 export function getSharedDrawSettings() {
     if (!settingsCache) {
         settingsCache = normalizeSharedDrawSettings({});

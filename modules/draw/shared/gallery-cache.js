@@ -2,7 +2,6 @@
 // 画廊和缓存管理模块
 
 import { getContext } from "../../../../../../extensions.js";
-import { saveBase64AsFile } from "../../../../../../utils.js";
 import {
     LIGHTBOX_STYLE_ID,
     closeImageLightbox,
@@ -825,43 +824,6 @@ export async function deleteFailedRecordsForSlot(slotId) {
     }
 }
 
-export async function updatePreviewSavedUrl(imgId, savedUrl) {
-    const database = await openDB();
-    const preview = await getPreview(imgId);
-    if (!preview) return;
-    
-    preview.savedUrl = savedUrl;
-    preview.base64 = null;
-    
-    return new Promise((resolve, reject) => {
-        try {
-            const tx = database.transaction(DB_STORE, 'readwrite');
-            tx.objectStore(DB_STORE).put(preview);
-            tx.oncomplete = () => {
-                revokePreviewObjectUrl(imgId);
-                invalidateCache(preview.slotId);
-                publishCacheChange([preview.slotId]);
-                resolve();
-            };
-            tx.onerror = () => reject(tx.error);
-        } catch (e) {
-            reject(e);
-        }
-    });
-}
-
-export async function savePreviewImage(imgId, filePrefix = 'draw') {
-    const preview = await getPreview(imgId);
-    if (!preview) throw new Error('图片缓存不存在');
-    if (preview.savedUrl) return preview.savedUrl;
-    if (!preview.base64) throw new Error('图片缓存不存在');
-    const charName = preview.characterName || getChatCharacterName();
-    const image = getBase64ImagePayload(preview.base64);
-    const url = await saveBase64AsFile(image.base64, charName, `${filePrefix}_${imgId}`, image.format);
-    await updatePreviewSavedUrl(imgId, url);
-    return url;
-}
-
 export async function getCacheStats() {
     const database = await openDB();
     return new Promise((resolve) => {
@@ -1070,9 +1032,9 @@ export async function getCharacterPreviews(charName) {
 // 小画廊 UI
 // ═══════════════════════════════════════════════════════════════════════════
 
-// 灯箱 UI 在 image-lightbox.js（不依赖酒馆模块）。这里只注入保存、设为显示、下载三件事。
+// 灯箱 UI 在 image-lightbox.js（不依赖酒馆模块）。这里只注入下载。
 // 不再有缩略条和删除；长按图片弹出操作面板，扩展项用 registerLightboxAction 注册。
-export async function openGallery(slotId, messageId, callbacks = {}) {
+export async function openGallery(slotId, messageId) {
     const previews = await getPreviewsBySlot(slotId);
     const validPreviews = previews.filter(p => p.status !== 'failed' && (p.base64 || p.savedUrl));
 
@@ -1092,27 +1054,9 @@ export async function openGallery(slotId, messageId, callbacks = {}) {
     return openImageLightbox({
         previews: validPreviews,
         startIndex,
-        selectedIndex: startIndex,
         slotId,
         messageId,
         getUrl: getPreviewDisplayUrl,
-        onUse: async (selected, index) => {
-            await setSlotSelection(slotId, selected.imgId);
-            callbacks.onUse?.(slotId, messageId, selected, validPreviews.length, index);
-            showToast('已切换显示图片');
-        },
-        onSave: async (current) => {
-            if (current.savedUrl) return current.savedUrl;
-            const charName = current.characterName || getChatCharacterName();
-            const image = getBase64ImagePayload(current.base64);
-            const url = await saveBase64AsFile(image.base64, charName, `novel_${current.imgId}`, image.format);
-            await updatePreviewSavedUrl(current.imgId, url);
-            current.savedUrl = url;
-            await setSlotSelection(slotId, current.imgId);
-            showToast(`已保存: ${url}`, 'success', 4000);
-            callbacks.onSave?.(current.imgId, url);
-            return url;
-        },
         onDownload: async (current) => {
             const name = await downloadImageOriginal(current);
             showToast(`已开始下载原图：${name}`, 'info');
@@ -1120,7 +1064,7 @@ export async function openGallery(slotId, messageId, callbacks = {}) {
         },
         onError: (error, kind) => {
             console.error('[GalleryCache] 灯箱操作失败:', kind, error);
-            showToast(`${kind === 'save' ? '保存' : '操作'}失败: ${error?.message || error}`, 'error');
+            showToast(`操作失败: ${error?.message || error}`, 'error');
         },
     });
 }

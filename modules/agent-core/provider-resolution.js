@@ -19,6 +19,7 @@ export const TOOL_MODE_OPTIONS = Object.freeze([
 ]);
 
 export const PROVIDER_OPTIONS = Object.freeze([
+    { value: 'sillytavern-current', label: '使用酒馆当前 API' },
     { value: 'openai-responses', label: 'OpenAI Responses' },
     { value: 'openai-compatible', label: 'OpenAI 兼容' },
     { value: 'sillytavern-openai-compatible', label: '酒馆 OpenAI 兼容' },
@@ -30,6 +31,7 @@ export const PROVIDER_OPTIONS = Object.freeze([
 
 export function isSillyTavernProvider(provider = '') {
     return provider === 'sillytavern-openai-compatible'
+        || provider === 'sillytavern-current'
         || provider === 'sillytavern-claude'
         || provider === 'sillytavern-google';
 }

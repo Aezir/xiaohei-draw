@@ -1014,8 +1014,6 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                     <div class="btn-group">
                         <button id="nd_params_add" class="btn btn-icon" title="新建"><i class="ri-add-line"></i></button>
                         <button id="nd_params_rename" class="btn btn-icon" title="重命名"><i class="ri-edit-line"></i></button>
-                        <button id="nd_params_save" class="btn btn-primary btn-icon" title="保存"><i class="ri-save-3-line"></i></button>
-                        <button id="nd_params_cloud" class="btn btn-icon" title="云端预设" style="color:var(--accent);"><i class="ri-download-cloud-2-line"></i></button>
                         <button id="nd_params_export" class="btn btn-icon" title="导出当前预设"><i class="ri-share-box-line"></i></button>
                         <span id="nd-preset-import-slot"></span>
                         <button id="nd_params_del" class="btn btn-danger btn-icon" title="删除"><i class="ri-delete-bin-line"></i></button>
@@ -1110,13 +1108,13 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                             <div class="card-title">测试提示词</div>
                             <div class="nai-box">
                                 <div class="nai-box-head"><label for="nd_test_tags">Prompt</label><span class="nai-head-label">接在正向固定之后</span></div>
-                                <textarea id="nd_test_tags" class="input" rows="3">1girl, smile, upper body, simple background</textarea>
+                                <textarea id="nd_test_tags" class="input" rows="3"></textarea>
                             </div>
                             <div class="nai-box" style="margin-top:8px;">
                                 <div class="nai-box-head"><label for="nd_test_uc">Undesired Content</label><span class="nai-head-label">可选，接在负向固定之后</span></div>
                                 <textarea id="nd_test_uc" class="input" rows="2" placeholder="留空则只用负向固定"></textarea>
                             </div>
-                            <p class="nai-hint">点底部「生成」出一张测试图：用当前已保存的参数预设，正向固定 + Prompt，负向固定 + Undesired Content。改过参数请先保存。</p>
+                            <p class="nai-hint">点底部「生成」出一张测试图：用当前参数预设（改动会自动保存），正向固定 + Prompt，负向固定 + Undesired Content。</p>
                         </div>
 
                         <div class="nai-group-title">参考图</div>
@@ -1427,7 +1425,6 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                         <div class="btn-group">
                             <button id="nd_prompt_add" class="btn btn-icon" title="新建"><i class="ri-add-line"></i></button>
                             <button id="nd_prompt_rename" class="btn btn-icon" title="重命名"><i class="ri-edit-line"></i></button>
-                            <button id="nd_prompt_preset_save" class="btn btn-primary btn-icon" title="保存"><i class="ri-save-3-line"></i></button>
                             <label class="btn btn-icon" title="导入为新预设" style="cursor:pointer;"><i class="ri-download-2-line"></i><input type="file" id="nd_prompt_preset_import" accept=".json" style="display:none;"></label>
                             <button id="nd_prompt_preset_export" class="btn btn-icon" title="导出当前预设"><i class="ri-upload-2-line"></i></button>
                             <button id="nd_prompt_del" class="btn btn-danger btn-icon" title="删除"><i class="ri-delete-bin-line"></i></button>
@@ -1464,7 +1461,6 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 
                     <div class="action-status-row nd-span-all">
                         <div class="btn-group">
-                            <button id="nd_prompts_save" class="btn btn-primary"><i class="ri-save-3-line"></i> 保存到当前预设</button>
                             <button id="nd_prompts_reset_all" class="btn btn-danger"><i class="ri-arrow-go-back-line"></i> 全部恢复默认</button>
                         </div>
                         <div id="nd_prompts_status" class="status-text"></div>
@@ -1475,7 +1471,7 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                             <div class="card-title"><i class="ri-filter-3-line"></i> 消息过滤规则</div>
                             <i class="ri-arrow-right-s-line chain-toggle-icon" aria-hidden="true"></i>
                         </summary>
-                        <p class="form-hint" style="margin-bottom:6px;">送模前移除 RP 消息中的思考块等干扰内容。起始留空表示从消息开头过滤；结束留空表示过滤到消息末尾。</p>
+                        <p class="form-hint" style="margin-bottom:6px;">送模前移除 RP 消息中的思考块等干扰内容。起始留空表示从消息开头过滤；结束留空表示过滤到消息末尾；起始和结束填同一个记号表示只删掉这个记号本身。</p>
                         <div id="nd_filter_rules_list"></div>
                         <div class="btn-group" style="margin-top:6px;">
                             <button id="nd_filter_add" class="btn btn-sm"><i class="ri-add-line"></i> 添加规则</button>
@@ -1578,6 +1574,7 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                     <p class="view-desc">查看、管理和清理生成的配图</p>
                 </div>
 
+                <div id="nd-gallery-web-slot"></div>
                 <div id="nd-gallery-link-slot"></div>
 
                 <div class="card">
@@ -1624,13 +1621,14 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                     <p class="view-desc">NovelAI 服务连接与场景 Agent</p>
                 </div>
                 <div class="nd-grid cols-2">
-                    <div class="card">
-                        <div class="card-title">NovelAI 连接</div>
+                    <div class="card nd-span-all">
+                        <div class="card-title">NovelAI</div>
                         <div class="form-group">
                             <label class="form-label" for="nd_api_key">NovelAI API Key</label>
                             <div class="input-row">
                                 <input id="nd_api_key" type="password" class="input" placeholder="pst-xxxxxxxx...">
                                 <button id="nd_toggle_key" class="btn btn-icon" title="显示/隐藏"><i class="ri-eye-line"></i></button>
+                                <button id="nd_test_api" class="btn btn-icon" title="测试连接，并刷新 Anlas / 电量"><i class="ri-plug-line"></i></button>
                             </div>
                             <p class="form-hint">仅存储在本地浏览器</p>
                         </div>
@@ -1641,6 +1639,18 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                                 <button id="nd_reset_base_url" class="btn btn-icon" title="重置为官方地址"><i class="ri-arrow-go-back-line"></i></button>
                             </div>
                             <p class="form-hint">留空使用官方端点。推荐只填根地址（如 https://xxx.com）；插件会按当前模型选择 /ai/generate-image 或 /ai/generate-image-stream。</p>
+                        </div>
+                        <div class="kv-row"><label>剩余 Anlas</label><span id="nd_anlas_left" class="nd-stat-value">—</span></div>
+                        <div class="kv-row"><label>当前电量</label><span id="nd_battery" class="nd-stat-value">—</span></div>
+                        <div class="kv-row"><label>还可生成 V5</label><span id="nd_v5_left" class="nd-stat-value">—</span></div>
+                        <p id="nd_sub_status" class="form-hint" style="margin:-2px 0 6px;"></p>
+                        <div class="kv-row">
+                            <label for="nd_timeout">超时 (秒)</label>
+                            <input id="nd_timeout" type="number" class="input" value="60">
+                        </div>
+                        <div class="kv-row">
+                            <label for="nd_delay">请求间隔 (毫秒)</label>
+                            <input id="nd_delay" type="text" class="input" value="150-300" placeholder="150-300" title="每次请求结束后随机等待的毫秒数，填“最小-最大”，如 150-300；所有标签页共用一条队列">
                         </div>
                         <div class="form-group">
                             <label class="form-label">发送方式</label>
@@ -1670,38 +1680,8 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                             </div>
                             <p class="form-hint">前端直连：浏览器直接请求（需对方支持 CORS + 有效证书）。后端发送：由酒馆后端代发，可绕过 CORS 与自签证书。</p>
                         </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title">请求与订阅</div>
-                        <div class="kv-row">
-                            <label for="nd_sub_tier">订阅档位</label>
-                            <select id="nd_sub_tier" class="input">
-                                <option value="auto" selected>自动</option>
-                                <option value="none">无订阅</option>
-                                <option value="tablet">Tablet</option>
-                                <option value="scroll">Scroll</option>
-                                <option value="opus">Opus</option>
-                            </select>
-                        </div>
-                        <p class="form-hint" style="margin:-2px 0 6px;">自动查询失败时按这里的档位估算费用（估算显示为「约」）。</p>
-                        <p id="nd_sub_status" class="form-hint" style="margin:-4px 0 6px;"></p>
-                        <div class="kv-row">
-                            <label for="nd_timeout">超时 (秒)</label>
-                            <input id="nd_timeout" type="number" class="input" value="60">
-                        </div>
-                        <div class="kv-row">
-                            <label for="nd_delay">请求间隔 (毫秒)</label>
-                            <input id="nd_delay" type="text" class="input" value="15000-30000">
-                        </div>
-                        <div class="btn-group" style="margin-top:8px;">
-                            <button id="nd_save_api" class="btn btn-primary"><i class="ri-save-3-line"></i> 保存</button>
-                            <button id="nd_test_api" class="btn"><i class="ri-plug-line"></i> 测试连接</button>
-                        </div>
                         <div id="nd_api_status" class="status-text"></div>
                     </div>
-
-                    <div id="nd-gallery-auth-slot" class="nd-span-all"></div>
 
                     <div class="nd-span-all">
                         <div class="nd-subhead"><i class="ri-robot-2-line"></i>场景 Agent</div>
@@ -1709,6 +1689,8 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                             <div class="draw-agent-settings-state"><i class="ri-loader-4-line ri-spin"></i><span>正在读取共享 Agent 主预设…</span></div>
                         </div>
                     </div>
+
+                    <div id="nd-gallery-auth-slot" class="nd-span-all"></div>
 
                     <!-- 原项目与许可证说明：放在 API 配置最底部 -->
                     <div class="nd-span-all nd-about" id="nd_about">
@@ -1750,7 +1732,6 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
             <div class="gallery-modal-thumbs" id="nd_modal_thumbs"></div>
             <div class="gallery-modal-actions">
                 <button class="btn btn-primary" id="nd_modal_use"><i class="ri-check-line"></i> 使用此图</button>
-                <button class="btn" id="nd_modal_save"><i class="ri-save-3-line"></i> 保存到本地</button>
                 <button class="btn" id="nd_modal_gallery"><i class="ri-image-add-line"></i> 存入画廊</button>
                 <button class="btn btn-danger" id="nd_modal_delete"><i class="ri-delete-bin-line"></i> 删除</button>
             </div>
@@ -1765,6 +1746,7 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 <script type="module" src="ui/novel-vibe-panel.js?v=20260913g1"></script>
 <script type="module" src="ui/nd-cost-bar.js?v=20260913g1"></script>
 <script type="module" src="ui/gallery-browser.js?v=20260913g1"></script>
+<script type="module" src="ui/gallery-web-launcher.js?v=20260914gw1"></script>
 <script type="module">
 // NAI 提示词输入框语法高亮（shared/nai-prompt-highlight.js，分词器原样拷贝自 nai-gallery）。
 // 只接 NAI tag 框；提示词模板（给场景 Agent 的 markdown）不是 tag，不接。角色编辑表单是动态渲染的，自动接管后插入的。
@@ -1778,7 +1760,7 @@ autoAttachPromptHighlight(document, '#nd_positive, #nd_negative, #nd_test_tags, 
 
 const DEFAULTS = {
     timeout: 60000,
-    requestDelay: { min: 15000, max: 30000 },
+    requestDelay: { min: 150, max: 300 },
     cacheDays: 3,
     params: {
         model: 'nai-diffusion-4-5-full',
@@ -1870,6 +1852,75 @@ function postToParent(payload) {
 // 给 module 脚本（ui/gallery-browser.js）读当前状态（参数预设列表查重用）
 function ndGetState() { return state; }
 
+// ─── 自动保存（参数预设 / 提示词预设）──────────────────────────────────────
+// 用户改表单 → 防抖 500ms 发保存消息；切预设 / 点生成 / 切页 / 页面隐藏或卸载时立即冲刷。
+// 程序往表单填值（applyParamsPreset）期间 formPopulating>0，不触发保存。
+const AUTOSAVE_DELAY_MS = 500;
+let paramsSaveTimer = 0;
+let promptSaveTimer = 0;
+let formPopulating = 0;
+
+function scheduleParamsSave() {
+    if (formPopulating > 0) return;
+    if (!(state.paramsPresets || []).some(p => p.id === state.selectedParamsPresetId)) return;
+    clearTimeout(paramsSaveTimer);
+    paramsSaveTimer = setTimeout(flushParamsSave, AUTOSAVE_DELAY_MS);
+}
+
+/** 有待保存的参数改动就立即发出；返回是否发了。 */
+function flushParamsSave() {
+    if (!paramsSaveTimer) return false;
+    clearTimeout(paramsSaveTimer);
+    paramsSaveTimer = 0;
+    collectParamsPreset();
+    const preset = (state.paramsPresets || []).find(p => p.id === state.selectedParamsPresetId);
+    if (!preset) return false;
+    postToParent({
+        type: 'SAVE_PARAMS_PRESET',
+        autosave: true,
+        selectedParamsPresetId: state.selectedParamsPresetId,
+        paramsPreset: preset,
+    });
+    return true;
+}
+
+function schedulePromptSave() {
+    if (formPopulating > 0) return;
+    clearTimeout(promptSaveTimer);
+    promptSaveTimer = setTimeout(flushPromptSave, AUTOSAVE_DELAY_MS);
+}
+
+function flushPromptSave() {
+    if (!promptSaveTimer) return false;
+    clearTimeout(promptSaveTimer);
+    promptSaveTimer = 0;
+    const active = getActivePromptPresetForForm();
+    if (!active?.id) return false;
+    postToParent({
+        type: 'SAVE_PROMPT_PRESET',
+        autosave: true,
+        selectedPromptPresetId: active.id,
+        promptDraft: {
+            topSystem: $('nd_prompt_system').value,
+            sceneRules: $('nd_prompt_format').value,
+            modelGuideOverrides: collectModelGuideOverridesFromForm(),
+        },
+        statusTarget: 'prompt-preset',
+    });
+    return true;
+}
+
+/** 立即保存提示词预设（恢复默认用）。 */
+function savePromptPresetNow() {
+    promptSaveTimer = promptSaveTimer || -1;
+    flushPromptSave();
+}
+
+function flushAutosaves() {
+    flushParamsSave();
+    flushPromptSave();
+}
+
 // 页内对话框（shared/xb-dialog.js 挂的 window.XBDialog）；没加载到时按「取消」处理，不回退原生对话框
 const ndDialog = {
     confirm: (message, opts) => window.XBDialog ? window.XBDialog.confirm(message, opts) : Promise.resolve(false),
@@ -1943,6 +1994,7 @@ function parseDelay(str) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function switchView(viewId) {
+    flushAutosaves();
     $$('.view').forEach(v => v.classList.remove('active'));
     $$('.nav-item, .mobile-nav-item').forEach(n => n.classList.remove('active'));
     $(`view-${viewId}`)?.classList.add('active');
@@ -2120,6 +2172,10 @@ const ND_DEFAULT_FILTER_RULES = [
     { start: '<UpdateVariable>', end: '</UpdateVariable>' },
     { start: '<—',         end: '—>' },
     { start: '',           end: '</think>' },
+    { start: '<StatusPlaceHolderImpl/>', end: '<StatusPlaceHolderImpl/>' },
+    { start: '```html',    end: '```' },
+    { start: '<!DOCTYPE html', end: '</html>' },
+    { start: '<html',      end: '</html>' },
 ];
 
 function renderFilterRuleRow(rule, container) {
@@ -2868,15 +2924,6 @@ function renderModalContent() {
     $('nd_modal_img').src = getGalleryImageUrl(current);
     updateModalThumbState();
     
-    const saveBtn = $('nd_modal_save');
-    if (current.savedUrl) {
-        saveBtn.innerHTML = '<i class="ri-check-line"></i> 已保存';
-        saveBtn.disabled = true;
-    } else {
-        saveBtn.innerHTML = '<i class="ri-save-3-line"></i> 保存到本地';
-        saveBtn.disabled = false;
-    }
-    
     $('nd_modal_info').textContent = `${currentIndex + 1} / ${images.length} · ${new Date(current.timestamp).toLocaleString()}`;
 }
 
@@ -3057,7 +3104,6 @@ function applyStateToUI() {
         $('nd_api_base_url').value = state.apiBaseUrl || '';
         updateSendModeUI(state.sendMode === 'backend' ? 'backend' : 'frontend');
         $('nd_insecure_tls').checked = state.insecureTLS === true;
-        $('nd_sub_tier').value = ['auto', 'none', 'tablet', 'scroll', 'opus'].includes(state.subTier) ? state.subTier : 'auto';
         $('nd_timeout').value = Math.round((state.timeout > 0 ? state.timeout : DEFAULTS.timeout) / 1000);
         const dMin = state.requestDelay?.min > 0 ? state.requestDelay.min : DEFAULTS.requestDelay.min;
         const dMax = state.requestDelay?.max > 0 ? state.requestDelay.max : DEFAULTS.requestDelay.max;
@@ -3101,6 +3147,16 @@ function applyStateToUI() {
 }
 
 function applyParamsPreset() {
+    formPopulating++;
+    try {
+        fillParamsPresetForm();
+    } finally {
+        formPopulating--;
+    }
+}
+
+/** 只由 applyParamsPreset 调用（包在 formPopulating 里，填值不会触发自动保存） */
+function fillParamsPresetForm() {
     const p = state.paramsPresets.find(x => x.id === state.selectedParamsPresetId) || state.paramsPresets[0];
     if (!p) return;
 
@@ -3398,6 +3454,7 @@ function setNaiSize(w, h) {
     $('nd_height').value = h;
     updateSizePreset();
     syncNaiControls();
+    scheduleParamsSave();
 }
 
 function initNaiControls() {
@@ -3431,6 +3488,7 @@ function initNaiControls() {
     $('nd_seed_random').addEventListener('click', () => {
         $('nd_seed').value = '-1';
         syncNaiControls();
+        scheduleParamsSave();
     });
     const view = $('view-params');
     view.addEventListener('input', () => syncNaiControls());
@@ -3449,16 +3507,26 @@ window.addEventListener('message', event => {
     if (!data || data.source !== 'XBDraw-NovelDraw') return;
 
     switch (data.type) {
-        case 'INIT_DATA':
+        case 'INIT_DATA': {
             console.log('[ND-UI] INIT_DATA received — autoLearn=%s, advMode=%s, promptPresets:',
                 data.settings?.autoLearnCharacters, data.settings?.advancedMode,
                 JSON.stringify((data.settings?.promptPresets || []).map(p => p.name)));
+            // 还没发出的自动保存先发出去，并把这份改动盖回新下发的列表里，免得重填表单时丢掉
+            const pendingParams = flushParamsSave()
+                ? (state.paramsPresets || []).find(p => p.id === state.selectedParamsPresetId)
+                : null;
+            flushPromptSave();
             state = { ...state, ...data.settings, cacheStats: data.cacheStats || state.cacheStats };
+            if (pendingParams && Array.isArray(state.paramsPresets)) {
+                const index = state.paramsPresets.findIndex(p => p.id === pendingParams.id);
+                if (index >= 0) state.paramsPresets[index] = pendingParams;
+            }
             if (data.defaultPrompts) state._defaultPrompts = data.defaultPrompts;
             gallerySummary = data.gallerySummary || {};
             loadedCharPreviews = {};
             applyStateToUI();
             break;
+        }
 
         case 'OVERRIDE_SIZE':
             // 悬浮球 / 楼层菜单改了尺寸覆盖；提示条和计价由 ui/nd-cost-bar.js 自己监听更新
@@ -3545,23 +3613,6 @@ window.addEventListener('message', event => {
             postToParent({ type: 'REFRESH_CACHE_STATS' });
             break;
             
-        case 'GALLERY_IMAGE_SAVED':
-            if (modalData.charName && loadedCharPreviews[modalData.charName]) {
-                for (const slotId in loadedCharPreviews[modalData.charName]) {
-                    const img = loadedCharPreviews[modalData.charName][slotId].find(i => i.imgId === data.imgId);
-                    if (img) {
-                        img.savedUrl = data.savedUrl;
-                        renderCharacterSlots(modalData.charName, loadedCharPreviews[modalData.charName]);
-                        break;
-                    }
-                }
-            }
-            if (modalData.slotId) {
-                const img = modalData.images.find(i => i.imgId === data.imgId);
-                if (img) { img.savedUrl = data.savedUrl; renderModalThumbs(); renderModalContent(); }
-            }
-            break;
-
         case 'DANBOORU_LOCAL_SEARCH_RESULTS':
             renderLocalDanbooruResults(data.query, data.results || [], data.charId);
             break;
@@ -3578,7 +3629,14 @@ window.addEventListener('message', event => {
     }
 });
 
+// 页面隐藏 / 关闭设置页时把没发出的自动保存立即发出
+window.addEventListener('pagehide', () => flushAutosaves());
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushAutosaves();
+});
+
 window.addEventListener('beforeunload', () => {
+    flushAutosaves();
     for (const url of previewObjectUrls.values()) {
         try { URL.revokeObjectURL(url); } catch {}
     }
@@ -3637,7 +3695,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     $('nd_reset_base_url').addEventListener('click', () => {
         $('nd_api_base_url').value = '';
-        setSavingState($('nd_save_api'));
         postToParent({
             type: 'SAVE_API_CONFIG',
             apiKey: $('nd_api_key').value.trim(),
@@ -3679,20 +3736,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     $('nd_backend_recheck').addEventListener('click', () => requestBackendPluginCheck());
 
-    $('nd_save_api').addEventListener('click', () => {
-        setSavingState($('nd_save_api'));
-        postToParent({
-            type: 'SAVE_API_CONFIG',
-            apiKey: $('nd_api_key').value.trim(),
-            apiBaseUrl: $('nd_api_base_url').value.trim(),
-            sendMode: getSendMode(),
-            insecureTLS: $('nd_insecure_tls').checked,
-            timeout: Number($('nd_timeout').value) * 1000 || 180000,
-            requestDelay: parseDelay($('nd_delay').value)
-        });
+    // 即写即存：Key / 地址 / 超时 / 间隔 改完（失焦或回车）就保存
+    const saveApiConfigNow = () => postToParent({
+        type: 'SAVE_API_CONFIG',
+        apiKey: $('nd_api_key').value.trim(),
+        apiBaseUrl: $('nd_api_base_url').value.trim(),
+        sendMode: getSendMode(),
+        insecureTLS: $('nd_insecure_tls').checked,
+        timeout: Number($('nd_timeout').value) * 1000 || 180000,
+        requestDelay: parseDelay($('nd_delay').value)
     });
+    ['nd_api_key', 'nd_api_base_url', 'nd_timeout', 'nd_delay'].forEach(id => $(id).addEventListener('change', saveApiConfigNow));
     
-    $('nd_test_api').addEventListener('click', () => postToParent({
+    $('nd_test_api').addEventListener('click', () => {
+        postToParent({ type: 'REFRESH_SUBSCRIPTION', force: true });
+        postToParent({
         type: 'TEST_API',
         apiKey: $('nd_api_key').value.trim(),
         apiBaseUrl: $('nd_api_base_url').value.trim(),
@@ -3700,12 +3758,15 @@ document.addEventListener('DOMContentLoaded', () => {
         insecureTLS: $('nd_insecure_tls').checked,
         timeout: Number($('nd_timeout').value) * 1000 || DEFAULTS.timeout,
         model: $('nd_model_sel').value === 'custom' ? $('nd_model').value : $('nd_model_sel').value,
-    }));
+        });
+    });
     
     // 底部生成栏「生成」：只在用户点击时发送，沿用原快速测试的 TEST_SINGLE（宿主用已保存的参数预设拼请求）
+    // 点击时先冲刷自动保存，宿主会等这次写入完成再读预设
     $('nd_test_single').addEventListener('click', async () => {
         const btn = $('nd_test_single');
         if (btn.disabled) return;
+        flushParamsSave();
         // 测试期间：不确定免费、或是 V5，都要二次确认
         const savedPreset = (state.paramsPresets || []).find(x => x.id === state.selectedParamsPresetId) || state.paramsPresets?.[0];
         if (btn.dataset.confirming) return;
@@ -3722,6 +3783,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.disabled = true;
         setTimeout(() => { btn.disabled = false; }, 200000);
         updateStatus($('nd_status'), 'loading', '生成中...');
+        flushParamsSave();
         postToParent({ type: 'TEST_SINGLE', tags: $('nd_test_tags').value, uc: $('nd_test_uc')?.value || '' });
     });
     
@@ -3753,24 +3815,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════════════════════════
     // 参数预设管理
     // ═══════════════════════════════════════════════════════════════════════
-    $('nd_params_preset').addEventListener('change', () => { 
-        state.selectedParamsPresetId = $('nd_params_preset').value; 
-        applyParamsPreset(); 
+    // 切预设：先把旧预设没发出的改动保存掉，再切过去并立即保存「当前选中」
+    $('nd_params_preset').addEventListener('change', () => {
+        flushParamsSave();
+        state.selectedParamsPresetId = $('nd_params_preset').value;
+        applyParamsPreset();
+        postToParent({ type: 'SAVE_PARAMS_PRESET', autosave: true, selectedParamsPresetId: state.selectedParamsPresetId });
     });
-    
-    $('nd_params_save').addEventListener('click', () => {
-        setSavingState($('nd_params_save'));
-        collectParamsPreset();
-        postToParent({ type: 'SAVE_PARAMS_PRESET', selectedParamsPresetId: state.selectedParamsPresetId, paramsPresets: state.paramsPresets });
+
+    // 参数表单改动 → 自动保存。测试提示词、氛围卡（走 nd:vibes-change）、悬浮球菜单、画廊导入、生成栏不算预设字段。
+    const paramsView = $('view-params');
+    const NOT_PRESET_FIELDS = '#nd_params_preset, #nd_test_card, #nd-vibe-slot, #nd-float-fields, #nd-preset-import-slot, #nd-cost-bar, input[type="file"]';
+    const onParamsFormEdit = (event) => {
+        const target = event.target;
+        // 复位（nd-cost-bar.js）直接在 #view-params 上派发 change
+        if (target !== paramsView && target?.closest?.(NOT_PRESET_FIELDS)) return;
+        scheduleParamsSave();
+    };
+    paramsView.addEventListener('input', onParamsFormEdit);
+    paramsView.addEventListener('change', onParamsFormEdit);
+    document.addEventListener('nd:vibes-change', (event) => {
+        if (event.detail?.edit) scheduleParamsSave();
     });
-    
-    $('nd_params_add').addEventListener('click', () => postToParent({ type: 'ADD_PARAMS_PRESET' }));
-    
-    $('nd_params_del').addEventListener('click', () => { 
-        ndDialog.confirm('确定删除当前参数预设？', { danger: true, okLabel: '删除' }).then(ok => { if (ok) postToParent({ type: 'DEL_PARAMS_PRESET' }); }); 
+
+    $('nd_params_add').addEventListener('click', () => { flushParamsSave(); postToParent({ type: 'ADD_PARAMS_PRESET' }); });
+
+    $('nd_params_del').addEventListener('click', () => {
+        ndDialog.confirm('确定删除当前参数预设？', { danger: true, okLabel: '删除' }).then(ok => { if (ok) { flushParamsSave(); postToParent({ type: 'DEL_PARAMS_PRESET' }); } });
     });
-    
+
     $('nd_params_rename').addEventListener('click', () => {
+        flushParamsSave();
         const p = state.paramsPresets.find(x => x.id === state.selectedParamsPresetId);
         if (!p) return;
         ndDialog.prompt('输入新名称：', p.name || '', { title: '重命名参数预设' }).then((name) => {
@@ -3781,14 +3856,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     
-    // ═══════════════════════════════════════════════════════════════════════
-    // 云端预设（新增）
-    // ═══════════════════════════════════════════════════════════════════════
-    $('nd_params_cloud').addEventListener('click', () => {
-        postToParent({ type: 'OPEN_CLOUD_PRESETS' });
-    });
-    
     $('nd_params_export').addEventListener('click', () => {
+        flushParamsSave();
         postToParent({ type: 'EXPORT_CURRENT_PRESET', presetId: state.selectedParamsPresetId });
     });
     
@@ -3941,7 +4010,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('nd_clear_expired').addEventListener('click', () => postToParent({ type: 'CLEAR_EXPIRED_CACHE' }));
     
     $('nd_clear_all').addEventListener('click', () => { 
-        ndDialog.confirm('确定清空全部图片记录？已保存到本地的文件不会被删除。', { danger: true, okLabel: '清空' }).then(ok => { if (ok) postToParent({ type: 'CLEAR_ALL_CACHE' }); }); 
+        ndDialog.confirm('确定清空全部图片记录？清空后无法恢复。', { danger: true, okLabel: '清空' }).then(ok => { if (ok) postToParent({ type: 'CLEAR_ALL_CACHE' }); }); 
     });
     
     $('nd_refresh_stats').addEventListener('click', () => postToParent({ type: 'REFRESH_CACHE_STATS' }));
@@ -3966,13 +4035,6 @@ document.addEventListener('DOMContentLoaded', () => {
         closeGalleryModal();
     });
     
-    $('nd_modal_save').addEventListener('click', () => {
-        if (!modalData.images.length) return;
-        const c = modalData.images[modalData.currentIndex];
-        if (c.savedUrl) return;
-        postToParent({ type: 'SAVE_GALLERY_IMAGE', imgId: c.imgId });
-    });
-    
     $('nd_modal_gallery').addEventListener('click', () => {
         if (!modalData.images.length) return;
         const c = modalData.images[modalData.currentIndex];
@@ -3988,36 +4050,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // ═══════════════════════════════════════════════════════════════════════
-    // 提示词预设管理 — 切换立即持久化，模板正文仍由保存按钮提交
+    // 提示词预设管理 — 切换立即持久化，模板正文改动防抖自动保存
     $('nd_prompt_preset').addEventListener('change', () => {
+        flushPromptSave();
         state.selectedPromptPresetId = $('nd_prompt_preset').value;
         applyPromptPreset();
         requestPromptChainPreview();
         postToParent({ type: 'SELECT_PROMPT_PRESET', id: state.selectedPromptPresetId });
     });
 
-    $('nd_prompt_preset_save').addEventListener('click', () => {
-        setSavingState($('nd_prompt_preset_save'));
-        getActivePromptPresetForForm();
-        postToParent({ type: 'SAVE_PROMPT_PRESET', selectedPromptPresetId: state.selectedPromptPresetId, promptDraft: {
-            topSystem: $('nd_prompt_system').value,
-            sceneRules: $('nd_prompt_format').value,
-            modelGuideOverrides: collectModelGuideOverridesFromForm(),
-        }, statusTarget: 'prompt-preset' });
+    $('nd_prompt_add').addEventListener('click', () => {
+        flushPromptSave();
+        postToParent({
+            type: 'ADD_PROMPT_PRESET',
+            sourcePresetId: state.selectedPromptPresetId,
+        });
     });
-
-    $('nd_prompt_add').addEventListener('click', () => postToParent({
-        type: 'ADD_PROMPT_PRESET',
-        sourcePresetId: state.selectedPromptPresetId,
-    }));
 
     $('nd_prompt_del').addEventListener('click', () => {
         ndDialog.confirm('确定删除当前提示词预设？', { danger: true, okLabel: '删除' }).then((ok) => {
-            if (ok) postToParent({ type: 'DEL_PROMPT_PRESET', id: state.selectedPromptPresetId });
+            if (!ok) return;
+            flushPromptSave();
+            postToParent({ type: 'DEL_PROMPT_PRESET', id: state.selectedPromptPresetId });
         });
     });
 
     $('nd_prompt_rename').addEventListener('click', () => {
+        flushPromptSave();
         const p = (state.promptPresets || []).find(x => x.id === state.selectedPromptPresetId);
         if (!p) return;
         ndDialog.prompt('输入新名称：', p.name || '', { title: '重命名提示词预设' }).then((name) => {
@@ -4027,18 +4086,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 提示词模板保存（底部按钮，等同于预设栏保存）
-    $('nd_prompts_save').addEventListener('click', () => {
-        setSavingState($('nd_prompts_save'));
-        getActivePromptPresetForForm();
-        postToParent({ type: 'SAVE_PROMPT_PRESET', selectedPromptPresetId: state.selectedPromptPresetId, promptDraft: {
-            topSystem: $('nd_prompt_system').value,
-            sceneRules: $('nd_prompt_format').value,
-            modelGuideOverrides: collectModelGuideOverridesFromForm(),
-        }, statusTarget: 'prompts' });
-    });
-
-    // 恢复默认只改表单；点保存才落盘
+    // 恢复默认：改表单后立即保存到当前预设
     const refreshChainIfOpen = () => { if ($('nd_prompt_chain_details').open) requestPromptChainPreview(); };
     $('nd_prompt_reset_system').addEventListener('click', () => {
         const activePreset = (state.promptPresets || []).find(p => p.id === state.selectedPromptPresetId);
@@ -4046,22 +4094,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const defaultTopSystem = isPov ? (state._defaultPrompts?.topSystemPov || '') : (state._defaultPrompts?.topSystem || '');
         $('nd_prompt_system').value = defaultTopSystem;
         setCurrentPromptTextDraft('topSystem', defaultTopSystem);
+        savePromptPresetNow();
         refreshChainIfOpen();
     });
     $('nd_prompt_reset_format').addEventListener('click', () => {
         const defaultSceneRules = state._defaultPrompts?.sceneRules || '';
         $('nd_prompt_format').value = defaultSceneRules;
         setCurrentPromptTextDraft('sceneRules', defaultSceneRules);
+        savePromptPresetNow();
         refreshChainIfOpen();
     });
     $('nd_prompt_reset_guide').addEventListener('click', () => {
         const defaultContent = state.modelGuideDefaults?.[getCurrentModelGuideId()] ?? '';
         $('nd_prompt_guide').value = defaultContent;
         setCurrentModelGuideDraft(defaultContent);
+        savePromptPresetNow();
         refreshChainIfOpen();
     });
     $('nd_prompts_reset_all').addEventListener('click', async () => {
-        if (!(await ndDialog.confirm('确认将当前预设的全部提示词恢复为默认值？（需点击保存才会生效）', { okLabel: '恢复默认' }))) return;
+        if (!(await ndDialog.confirm('确认将当前预设的全部提示词恢复为默认值？（会立即保存到当前预设）', { okLabel: '恢复默认' }))) return;
         const defaults = state._defaultPrompts || {};
         const activePreset = getActivePromptPresetForForm();
         if (!activePreset) {
@@ -4082,6 +4133,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .filter(([, content]) => typeof content === 'string'),
         ));
         applyModelGuideForCurrentModel();
+        savePromptPresetNow();
         refreshChainIfOpen();
     });
 
@@ -4106,6 +4158,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('nd_prompt_preset_import').addEventListener('change', async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        flushPromptSave();
         try {
             const text = await file.text();
             const data = JSON.parse(text);
@@ -4127,11 +4180,13 @@ document.addEventListener('DOMContentLoaded', () => {
     ['nd_prompt_system', 'nd_prompt_format'].forEach((id) => {
         $(id).addEventListener('input', () => {
             setCurrentPromptTextDraft(id === 'nd_prompt_system' ? 'topSystem' : 'sceneRules', $(id).value);
+            schedulePromptSave();
             if ($('nd_prompt_chain_details').open) requestPromptChainPreview();
         });
     });
     $('nd_prompt_guide').addEventListener('input', () => {
         setCurrentModelGuideDraft($('nd_prompt_guide').value);
+        schedulePromptSave();
         if ($('nd_prompt_chain_details').open) requestPromptChainPreview();
         else promptChainRequestId += 1;
     });

@@ -27,6 +27,7 @@ import {
     syncFloatFieldControls,
 } from './float-fields.js';
 import { FLOATING_PANEL_CSS } from './ui/floating-panel-styles.js';
+import { createIdleDimmer } from './ui/float-idle-dim.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 常量
@@ -83,6 +84,7 @@ let floatingAutoResetTimer = null;
 let floatingCooldownRafId = null;
 let floatingCooldownEndTime = 0;
 let $floatingCache = {};
+let floatingIdleDimmer = null;
 
 // 通用状态
 let stylesInjected = false;
@@ -1076,6 +1078,9 @@ function createFloatingButton() {
 
     document.addEventListener('click', handleFloatingOutsideClick, { passive: true });
     window.addEventListener('resize', applyFloatingPosition);
+
+    // 闲置 3 秒变半透明；拖动中算"忙"
+    floatingIdleDimmer = createIdleDimmer({ el: floatingEl, isBusy: () => !!floatingDragState });
 }
 
 function destroyFloatingButton() {
@@ -1088,6 +1093,9 @@ function destroyFloatingButton() {
 
     window.removeEventListener('resize', applyFloatingPosition);
     document.removeEventListener('click', handleFloatingOutsideClick);
+
+    floatingIdleDimmer?.destroy();
+    floatingIdleDimmer = null;
 
     floatingEl?.remove();
     floatingEl = null;

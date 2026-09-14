@@ -2,7 +2,7 @@
 // - 导入图片 / .naiv4vibe → 存 IndexedDB `xb_novelai_vibes`（设置页与酒馆同源，直接读写）。
 // - 每个氛围：启用、强度、信息提取（数字框 + 滑条）、导出 .naiv4vibe、移除。
 // - 「编码」按钮是唯一会编码的入口：发 VIBE_ENCODE 给宿主（宿主持有 Key），每次 2 Anlas，不重试。
-// - 预设里只存轻量元数据（getPresetVibes），跟随「保存」一起写入。
+// - 预设里只存轻量元数据（getPresetVibes）。用户改动时发 nd:vibes-change（detail.edit=true），设置页据此自动保存预设。
 // 挂到 window.NDVibePanel = { init, applyPreset, getPresetVibes, getPricingVibes, setItemEnabledByIndex, refresh }
 import { normalizeNovelVibeConfig, NOVEL_VIBE_DEFAULT_INFORMATION_EXTRACTED, NOVEL_VIBE_DEFAULT_STRENGTH } from '../novel-vibe-config.js';
 import { getVibeStore } from '../novel-vibe-store.js';
@@ -62,8 +62,9 @@ function enabledLimit() {
     return panel.config.allowOver4 ? NOVEL_VIBE_MAX : NOVEL_VIBE_FREE_COUNT;
 }
 
-function notifyChange() {
-    document.dispatchEvent(new CustomEvent('nd:vibes-change'));
+/** edit=true 表示用户改了列表/参数（设置页会自动保存）；编码状态刷新之类只影响计价，传 false。 */
+function notifyChange(edit = false) {
+    document.dispatchEvent(new CustomEvent('nd:vibes-change', { detail: { edit: edit === true } }));
 }
 
 function setNotice(text, level = 'info') {
@@ -234,11 +235,13 @@ async function importFiles(fileList) {
     if (!files.length) return;
     const messages = [];
     let level = 'info';
+    let added = 0;
     for (const file of files) {
         try {
             const isVibe = /\.(naiv4vibe|json)$/i.test(file.name) || file.type === 'application/json';
             const result = isVibe ? await importVibeFile(file) : await importImageFile(file);
             if (!result.added) { messages.push(result.reason); level = 'warn'; continue; }
+            added++;
             if (!result.enabled) { messages.push(`「${file.name}」已添加但未启用（启用上限 ${enabledLimit()} 个）`); level = 'warn'; }
             if (result.notes?.length) messages.push(`「${file.name}」${result.notes.join('；')}`);
         } catch (error) {
@@ -247,6 +250,7 @@ async function importFiles(fileList) {
         }
     }
     setNotice(messages.join('；'), level);
+    if (added) notifyChange(true);
     await refreshEncodedFlags();
 }
 
@@ -509,9 +513,9 @@ function bindEvents(root) {
         if (!item) return;
         if (kind === 'remove') {
             panel.config.items = panel.config.items.filter(entry => entry.id !== item.id);
-            setNotice('已从列表移除（点保存生效；氛围图仍留在本机，可再次添加）', 'info');
+            setNotice('已从列表移除（氛围图仍留在本机，可再次添加）', 'info');
             render();
-            notifyChange();
+            notifyChange(true);
         } else if (kind === 'export') {
             void exportItem(item);
         } else if (kind === 'encode') {
@@ -522,7 +526,7 @@ function bindEvents(root) {
         const target = event.target;
         const kind = target.dataset?.vibe;
         if (kind === 'file') { void importFiles(target.files); target.value = ''; return; }
-        if (kind === 'master') { panel.config.enabled = target.checked; render(); notifyChange(); return; }
+        if (kind === 'master') { panel.config.enabled = target.checked; render(); notifyChange(true); return; }
         if (kind === 'over4') {
             panel.config.allowOver4 = target.checked;
             if (!target.checked) {
@@ -530,7 +534,7 @@ function bindEvents(root) {
                 panel.config.items.forEach((item) => { if (item.enabled && ++seen > NOVEL_VIBE_FREE_COUNT) item.enabled = false; });
             }
             render();
-            notifyChange();
+            notifyChange(true);
             return;
         }
         const item = itemFromEvent(event);
@@ -543,7 +547,7 @@ function bindEvents(root) {
             }
             item.enabled = target.checked;
             render();
-            notifyChange();
+            notifyChange(true);
         } else if (kind === 'strength' || kind === 'ie') {
             const value = clampUnit(target.value);
             if (value == null) return;
@@ -587,7 +591,7 @@ function applySliderValue(item, kind, value, source) {
     });
     renderMeta();
     if (kind === 'ie') scheduleEncodedRefresh(250);
-    notifyChange();
+    notifyChange(true);
 }
 
 // ── 对外接口 ────────────────────────────────────────────────────────────
@@ -649,7 +653,7 @@ function setItemEnabledByIndex(index, enabled) {
     if (!item) return false;
     item.enabled = enabled === true;
     render();
-    notifyChange();
+    notifyChange(true);
     return true;
 }
 

@@ -20443,6 +20443,7 @@ function sn(e = "", t = "", n = null) {
   return d0(e) || String(e || t || "").trim();
 }
 function hm(e = {}, t = Ut) {
+  if (e.tavernSource) return { ...e.tavernExtra || {}, chat_completion_source: e.tavernSource };
   const n = n0(e.baseUrl, t), o = String(e.apiKey || "").trim(), r = jI[t] || "", i = n || (o ? r : ""), s = { chat_completion_source: t || "openai" };
   return i && (s.reverse_proxy = i), o && (s.proxy_password = o), s;
 }

@@ -135,7 +135,7 @@ function isSillyTavernProvider(provider = '') {
 }
 
 function isToolModeProvider(provider = '') {
-    return provider === 'openai-compatible' || provider === 'sillytavern-openai-compatible';
+    return provider === 'openai-compatible' || provider === 'sillytavern-openai-compatible' || provider === 'sillytavern-current';
 }
 
 function isAnthropicProvider(provider = '') {

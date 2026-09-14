@@ -11,6 +11,8 @@ import {
 } from "./scene-plan-contract.js";
 import { ScenePlacementError } from './scene-placement.js';
 import { replaceSceneSlotElements } from './scene-slot-dom.js';
+import { DEFAULT_MESSAGE_FILTER_RULES } from './message-filter-rules.js';
+import { createMessageRerenderer } from './message-rerender.js';
 import { createDrawImageSlotRegex } from './image-marker-syntax.js';
 import { classifyScenePlannerErrorForUi } from "./scene-planner-error-ui.js";
 import { isCharacterEnabled } from './character-selection.js';
@@ -68,18 +70,28 @@ export const ErrorType = {
     JOB_NOT_SUBMITTED: { code: 'job_not_submitted', label: '任务未提交', desc: '后台任务未提交成功，可重新生成' },
 };
 
-export const DEFAULT_MESSAGE_FILTER_RULES = [
-    { start: '<think>',    end: '</think>' },
-    { start: '<thinking>', end: '</thinking>' },
-    { start: '<system>',   end: '</system>' },
-    { start: '<meta>',     end: '</meta>' },
-    { start: '<options>',  end: '</options>' },
-    { start: '<WorldState>', end: '</WorldState>' },
-    { start: '<state>',    end: '</state>' },
-    { start: '<UpdateVariable>', end: '</UpdateVariable>' },
-    { start: '<—',         end: '—>' },
-    { start: '',           end: '</think>' },
-];
+// 默认过滤规则的唯一来源在 message-filter-rules.js（纯数据，便于测试和设置迁移）。
+export { DEFAULT_MESSAGE_FILTER_RULES };
+
+// 楼层重渲染统一走酒馆 updateMessageBlock + MESSAGE_UPDATED，见 message-rerender.js。
+const chatMessageRerenderer = createMessageRerenderer({
+    loadHost: async () => {
+        const host = await import('../../../../../../../script.js');
+        return {
+            updateMessageBlock: host.updateMessageBlock,
+            emitMessageUpdated: messageId => host.eventSource.emit(host.event_types.MESSAGE_UPDATED, messageId),
+        };
+    },
+    isEditing: messageId => isMessageBeingEdited(messageId),
+});
+
+export function rerenderChatMessage(messageId, message, options = {}) {
+    return chatMessageRerenderer.rerender(messageId, message, options);
+}
+
+export function isSelfEmittedMessageUpdate(messageId) {
+    return chatMessageRerenderer.isSelfUpdate(messageId);
+}
 
 export function toScenePlannerProgress(diagnostic = {}) {
     const phase = diagnostic?.progress?.phase;
@@ -439,23 +451,8 @@ async function rebuildRenderedMessageFromState(messageId, {
     const message = ctx.chat?.[messageId];
     if (!message || (chatId !== undefined && String(ctx.chatId || '') !== String(chatId || ''))
         || (expectedMessage && message !== expectedMessage) || isMessageBeingEdited(messageId)) return false;
-    const { messageFormatting } = await import('../../../../../../../script.js');
-    const live = getContext();
-    if (String(live.chatId || '') !== String(ctx.chatId || '')
-        || live.chat?.[messageId] !== message || isMessageBeingEdited(messageId)) return false;
-    const mesTextEl = getMesTextElement(messageId);
-    if (!mesTextEl) return false;
-    const formatted = messageFormatting(
-        message.mes,
-        message.name,
-        message.is_system,
-        message.is_user,
-        messageId,
-    );
-    // Host-generated message markup.
-    // eslint-disable-next-line no-unsanitized/property
-    mesTextEl.innerHTML = formatted;
-    return true;
+    if (!getMesTextElement(messageId)) return false;
+    return rerenderChatMessage(messageId, message);
 }
 
 function renderedMessageContainsSlot(mesTextEl, slotId) {
@@ -467,6 +464,7 @@ async function renderPreviewsForMessageNow(messageId, {
     refreshSlotIds = [],
     expectedChatId,
     expectedMessage,
+    allowRebuild = true,
 } = {}) {
     const ctx = getContext();
     const message = ctx.chat?.[messageId];
@@ -478,7 +476,9 @@ async function renderPreviewsForMessageNow(messageId, {
     const slotIds = extractSlotIds(sourceText);
     let mesTextEl = getMesTextElement(messageId);
     if (!mesTextEl) return;
-    if ([...slotIds].some(slotId => !renderedMessageContainsSlot(mesTextEl, slotId))) {
+    // allowRebuild=false：这次是本插件自己发出的 MESSAGE_UPDATED 触发的，楼层刚按 message 重渲染过；
+    // 再重建一次只会再发一次事件，形成循环（例如 display_text 里本来就没有槽位时）。
+    if (allowRebuild && [...slotIds].some(slotId => !renderedMessageContainsSlot(mesTextEl, slotId))) {
         // message.mes 是持久化排版事实。adoption 当下若恰逢聊天切换或宿主 DOM
         // 尚未挂载，一次局部 patch 可能没有锚点；先按前台生成相同的宿主格式
         // 重建楼层，再在下面统一投影 pending 卡或图片。
@@ -564,7 +564,7 @@ async function renderPreviewsForMessageNow(messageId, {
 // 同一楼层只允许一个异步投影在运行。图片落库、恢复状态变化和消息事件可能在同一时刻
 // 发起刷新；串行执行保证较早读取的旧事实一定先完成，最后留在 DOM 的总是较新的投影。
 // 队列只绑定当前 message 对象，聊天切换或宿主替换消息对象后，旧任务会被上面的身份守卫丢弃。
-export function renderPreviewsForMessage(messageId, { refreshSlotIds = [] } = {}) {
+export function renderPreviewsForMessage(messageId, { refreshSlotIds = [], allowRebuild = true } = {}) {
     const ctx = getContext();
     const message = ctx.chat?.[messageId];
     if (!message?.mes) return Promise.resolve();
@@ -580,6 +580,7 @@ export function renderPreviewsForMessage(messageId, { refreshSlotIds = [] } = {}
         refreshSlotIds: requestedSlots,
         expectedChatId,
         expectedMessage: message,
+        allowRebuild,
     }));
     const tail = render.catch(() => {});
     queue.tail = tail;
@@ -684,8 +685,10 @@ function handleDrawPreviewMessageModified(data) {
     const raw = typeof data === 'object' ? (data?.messageId ?? data?.mesId) : data;
     const messageId = parseInt(raw, 10);
     if (Number.isNaN(messageId)) return;
+    // 在事件派发当下判断来源；延迟回调执行时自发标记早已清掉。
+    const allowRebuild = !isSelfEmittedMessageUpdate(messageId);
     setTimeout(() => {
-        void renderPreviewsForMessage(messageId);
+        void renderPreviewsForMessage(messageId, { allowRebuild });
     }, 100);
 }
 

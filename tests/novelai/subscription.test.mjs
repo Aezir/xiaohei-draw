@@ -30,7 +30,7 @@ test('path 1: direct GET succeeds (mocked); key only in Authorization header', a
     const fetchImpl = mockFetch(() => Response.json(RAW));
     const result = await sub.resolveNovelSubscription({ apiKey: 'pst-secret', fetchImpl });
     assert.equal(result.source, 'direct');
-    assert.deepEqual(result.subscription, { tier: 3, active: true, expiresAt: 1800000000, usage: { isNegative: false, percent: 100 } });
+    assert.deepEqual(result.subscription, { tier: 3, active: true, expiresAt: 1800000000, anlas: 0, usage: { isNegative: false, percent: 100 } });
     assert.equal(fetchImpl.calls.length, 1);
     assert.equal(fetchImpl.calls[0].url, 'https://image.novelai.net/user/subscription');
     assert.equal(fetchImpl.calls[0].init.method, 'GET');

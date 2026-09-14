@@ -6,7 +6,7 @@
 //   surfaces：出现在哪里，'chat'（聊天图片长按）/ 'lightbox'（灯箱长按），缺省两处都有。
 //   ctx = { surface, slotId, messageId, preview, index, total, download()?, lightbox?, card? }
 //   when 返回真值才显示；run 可以是 async。返回值是注销函数。
-// 内置：下载（两处都有，下载原图）、保存到服务器（只在灯箱，未保存的预览才显示）。
+// 内置：下载（两处都有，下载原图）。
 
 import { ensureRemixIcon } from './remixicon-loader.js';
 import { XB_ACCENT, xbAccentSoft } from './xb-theme.js';
@@ -59,16 +59,6 @@ export function listImageActions(ctx, surface) {
 }
 
 const hasImage = ctx => !!(ctx?.preview?.base64 || ctx?.preview?.savedUrl);
-
-registerImageAction({
-    id: 'save-to-server',
-    icon: 'ri-save-3-line',
-    label: '保存到服务器',
-    order: 10,
-    surfaces: ['lightbox'],
-    when: ctx => ctx.lightbox?.canSave === true && !ctx.preview?.savedUrl && !!ctx.preview?.base64,
-    run: ctx => ctx.lightbox.save(),
-});
 
 registerImageAction({
     id: 'download-original',

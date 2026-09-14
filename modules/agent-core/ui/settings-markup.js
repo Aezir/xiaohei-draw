@@ -226,13 +226,14 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
                 <div class="xb-assistant-preset-tools" aria-label="API 预设操作">
                     <button id="xb-assistant-new-preset" type="button" class="xb-assistant-icon-button" title="新增预设" aria-label="新增预设" ${isBusy ? 'disabled' : ''}>${buildPresetActionIcon('add')}</button>
                     <button id="xb-assistant-rename-preset" type="button" class="xb-assistant-icon-button" title="重命名预设" aria-label="重命名预设" ${isBusy ? 'disabled' : ''}>${buildPresetActionIcon('rename')}</button>
-                    <button id="xb-assistant-save" type="button" class="xb-assistant-icon-button ${saveButton.className}" title="${saveButton.title}" aria-label="${saveButton.title}" ${saveDisabled}>${buildPresetActionIcon(saveIcon)}</button>
+                    <button id="xb-assistant-save" type="button" hidden class="xb-assistant-icon-button ${saveButton.className}" title="${saveButton.title}" aria-label="${saveButton.title}" ${saveDisabled}>${buildPresetActionIcon(saveIcon)}</button>
                     <button id="xb-assistant-delete-preset" type="button" class="xb-assistant-icon-button" title="删除预设" aria-label="删除预设" ${deleteDisabled}>${buildPresetActionIcon('delete')}</button>
                 </div>
             </div>
             <label>
                 <span>Provider</span>
                 <select id="xb-assistant-provider">
+                    <option value="sillytavern-current">使用酒馆当前 API</option>
                     <option value="openai-responses">OpenAI Responses</option>
                     <option value="openai-compatible">OpenAI 兼容</option>
                     <option value="sillytavern-openai-compatible">酒馆 OpenAI 兼容</option>
@@ -244,7 +245,18 @@ export function buildAgentSettingsPanelMarkup(options = {}) {
             </label>
             <label>
                 <span>Base URL</span>
-                <input id="xb-assistant-base-url" type="text" />
+                <input id="xb-assistant-base-url" type="text" list="xb-assistant-base-url-presets" placeholder="点输入框可选官方渠道" />
+                <datalist id="xb-assistant-base-url-presets">
+                    <option value="https://api.deepseek.com/v1">DeepSeek</option>
+                    <option value="https://open.bigmodel.cn/api/paas/v4">智谱 GLM</option>
+                    <option value="https://api.moonshot.cn/v1">Kimi（月之暗面）</option>
+                    <option value="https://api.siliconflow.cn/v1">硅基流动</option>
+                    <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">通义千问（阿里百炼）</option>
+                    <option value="https://ark.cn-beijing.volces.com/api/v3">豆包（火山方舟）</option>
+                    <option value="https://api.minimaxi.com/v1">MiniMax</option>
+                    <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+                </datalist>
+                <small>「使用酒馆当前 API」不用填地址、Key 和模型，直接用酒馆聊天那边选好的。官方渠道选「酒馆 OpenAI 兼容」最稳：由酒馆后端代发，不受浏览器跨域限制。</small>
             </label>
             <label>
                 <span>API Key</span>

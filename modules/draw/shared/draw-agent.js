@@ -90,6 +90,39 @@ function assertCurrentPreset(rawSettings, normalizedSettings) {
     }
 }
 
+// 「使用酒馆当前 API」：读酒馆 Chat Completion 设置，走酒馆后端代发（Key 在酒馆服务器上，前端拿不到也不需要）。
+function resolveTavernCurrentProvider(providerConfig) {
+    const ctx = globalThis.SillyTavern?.getContext?.();
+    const oai = ctx?.chatCompletionSettings;
+    const source = String(oai?.chat_completion_source || '').trim();
+    if (!source) {
+        throw new ScenePlannerError('读不到酒馆当前的 API：请先在酒馆「API 连接」里选 Chat Completion 并连上。', 'AGENT_PRESET_INVALID');
+    }
+    let model = '';
+    try { model = String(ctx.getChatCompletionModel?.() || ''); } catch { /* 旧版酒馆没有这个函数 */ }
+    if (!model) model = String(oai[source === 'makersuite' ? 'google_model' : `${source}_model`] || '');
+    const tavernExtra = {};
+    if (oai.reverse_proxy) {
+        tavernExtra.reverse_proxy = oai.reverse_proxy;
+        if (oai.proxy_password) tavernExtra.proxy_password = oai.proxy_password;
+    }
+    if (source === 'custom') {
+        tavernExtra.custom_url = oai.custom_url;
+        tavernExtra.custom_include_body = oai.custom_include_body;
+        tavernExtra.custom_exclude_body = oai.custom_exclude_body;
+        tavernExtra.custom_include_headers = oai.custom_include_headers;
+    }
+    return {
+        ...providerConfig,
+        provider: 'sillytavern-openai-compatible',
+        baseUrl: '',
+        apiKey: '',
+        model,
+        tavernSource: source,
+        tavernExtra,
+    };
+}
+
 function resolveDrawProviderConfig(rawSettings, timeout) {
     let settings;
     let providerConfig;
@@ -106,6 +139,9 @@ function resolveDrawProviderConfig(rawSettings, timeout) {
                 output: 'hide',
             },
         };
+        if (providerConfig.provider === 'sillytavern-current') {
+            providerConfig = resolveTavernCurrentProvider(providerConfig);
+        }
     } catch (error) {
         if (error instanceof ScenePlannerError) throw error;
         throw new ScenePlannerError(

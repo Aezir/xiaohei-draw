@@ -161,8 +161,23 @@ export function createDrawAgentSettingsSurface(options = {}) {
         scheduleSaveStateReset();
     }
 
+    // 即写即存：改动停 600ms 后点一下（隐藏的）保存按钮，走原来的保存流程。
+    let autoSaveTimer = null;
+    function scheduleAutoSave() {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(() => {
+            if (destroyed) return;
+            const button = boundRoot?.querySelector?.('#xb-assistant-save');
+            if (!button) return;
+            if (button.disabled) { scheduleAutoSave(); return; }
+            button.click();
+        }, 600);
+    }
+
     function markConfigDirty(event) {
         if (!event?.target?.closest?.('.xb-assistant-config')) return;
+        if (event.target.closest('.xb-assistant-preset-row') && event.type === 'input') return;
+        scheduleAutoSave();
         state.configDirty = true;
         if (state.configSave.status === 'success') {
             clearResetTimer();

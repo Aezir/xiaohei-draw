@@ -1,4 +1,4 @@
-import { hashSceneSource } from './scene-source.js';
+import { createNarrativeOffsetMapper, findNarrativeTailOffset, hashSceneSource } from './scene-source.js';
 import { createDrawImageSlotRegex } from './image-marker-syntax.js';
 
 export class ScenePlacementError extends Error {
@@ -7,6 +7,41 @@ export class ScenePlacementError extends Error {
         this.name = 'ScenePlacementError';
         this.code = code;
     }
+}
+
+/**
+ * 把按 fromText 规划的 placements 挪到 toText 上。两份文本都是去掉图片槽位后的正文。
+ * - 文本相同：原样返回；
+ * - 只差 MVU 临时标记（<StatusPlaceHolderImpl/>、<UpdateVariable> 块、尾部空白）：offset 映射到新正文的同一叙事位置；
+ * - 叙事内容变了：抛 SCENE_SOURCE_CHANGED，和以前一样拒绝写入。
+ */
+export function rebaseScenePlacements(placements, fromText, toText) {
+    const from = String(fromText ?? '');
+    const to = String(toText ?? '');
+    const list = Array.isArray(placements) ? placements : [];
+    const fromHash = hashSceneSource(from);
+    const assertOwned = (placement) => {
+        if (placement?.mode === 'source' && placement.sourceHash !== fromHash) {
+            throw new ScenePlacementError('图片任务不属于当前正文。', 'SCENE_SOURCE_CHANGED');
+        }
+    };
+    if (from === to) {
+        list.forEach(assertOwned);
+        return { placements: list.slice(), rebased: false };
+    }
+    const mapOffset = createNarrativeOffsetMapper(from, to);
+    if (!mapOffset) {
+        throw new ScenePlacementError('正文已在场景规划后发生变化，已拒绝写入图片占位符。', 'SCENE_SOURCE_CHANGED');
+    }
+    const toHash = hashSceneSource(to);
+    return {
+        rebased: true,
+        placements: list.map((placement) => {
+            assertOwned(placement);
+            if (placement?.mode !== 'source') return placement;
+            return { ...placement, offset: mapOffset(placement.offset), sourceHash: toHash };
+        }),
+    };
 }
 
 export function assertSceneSourceUnchanged(sourceText, expectedHash) {
@@ -18,7 +53,8 @@ export function assertSceneSourceUnchanged(sourceText, expectedHash) {
 }
 
 function resolvePlacementOffset(sourceText, placement, sourceHash) {
-    if (placement?.mode === 'tail') return sourceText.length;
+    // 尾插放在 MVU 状态栏占位符等尾部临时标记之前，图片不会跑到状态栏下面。
+    if (placement?.mode === 'tail') return findNarrativeTailOffset(sourceText);
     if (placement?.mode !== 'source') {
         throw new ScenePlacementError('图片任务缺少有效 placement。');
     }

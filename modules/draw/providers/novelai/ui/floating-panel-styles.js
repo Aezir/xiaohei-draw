@@ -21,6 +21,9 @@ export const FLOATING_PANEL_CSS = `
     color: var(--nd-text-primary);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+/* 全局悬浮球闲置变淡（类名由 float-idle-dim.js 切换） */
+.nd-floating-global { transition: opacity 0.3s ease; }
+.nd-floating-global.is-dim { opacity: 0.45; }
 
 /* ── 胶囊 ── */
 .nd-capsule {
