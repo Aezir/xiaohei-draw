@@ -1576,7 +1576,8 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 
                 <!-- 上：文生图（聊天里生成、缓存在本机的图） -->
                 <section class="nd-gallery-section" aria-labelledby="nd_sec_t2i">
-                <button type="button" class="nd-subhead nd-sec-toggle" id="nd_sec_t2i" data-sec="t2i" aria-expanded="true"><i class="ri-magic-line"></i>文生图<i class="ri-arrow-down-s-line nd-sec-arrow" aria-hidden="true"></i></button>
+                <button type="button" class="nd-subhead nd-sec-toggle" id="nd_sec_t2i" data-sec="t2i" aria-expanded="true"><i class="ri-magic-line"></i>文生图<span class="nd-sec-help" role="button" tabindex="0" aria-label="文生图和画廊有什么区别" title="文生图和画廊有什么区别"><i class="ri-question-line"></i></span><i class="ri-arrow-down-s-line nd-sec-arrow" aria-hidden="true"></i></button>
+                <p class="nd-sec-hint" hidden>文生图 = 聊天里自动配的图，缓存在这个浏览器里，过期会自动清理，只跟着聊天走。画廊 = 你自己的图片收藏（和画廊网站同一个），要手动「同步到 Gallery」才会进去，不会被清理。两边互不影响：清空文生图不会删画廊里的图。</p>
                 <div class="nd-sec-body">
                 <div class="card">
                     <div class="nd-cache-bar">

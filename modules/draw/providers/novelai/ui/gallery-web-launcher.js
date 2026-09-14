@@ -24,6 +24,10 @@ const CSS = `
 .nd-sec-toggle .nd-sec-arrow { margin-left: auto; font-size: 18px; opacity: .6; transition: transform .2s; }
 .nd-gallery-section.is-collapsed .nd-sec-arrow { transform: rotate(-90deg); }
 .nd-gallery-section.is-collapsed .nd-sec-body { display: none; }
+.nd-sec-help { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 14px; opacity: .55; cursor: help; }
+.nd-sec-help:hover, .nd-sec-help:focus-visible { opacity: 1; background: var(--accent-soft, rgba(232,137,176,.16)); color: var(--accent); }
+.nd-sec-hint { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--radius, 8px); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.nd-sec-hint[hidden] { display: none; }
 .nd-gw-frame { display: block; width: 100%; height: calc(100dvh - 48px); min-height: 420px; border: 0; border-radius: var(--radius-lg, 10px); background: var(--bg-primary); }
 `;
 
@@ -148,6 +152,18 @@ function setupSectionCollapse(onExpand) {
             button.setAttribute('aria-expanded', String(!collapsed));
         };
         apply(saved[key] === true);
+        // 小问号：点它只展开/收起说明，不触发折叠
+        const help = button.querySelector('.nd-sec-help');
+        const hint = section.querySelector('.nd-sec-hint');
+        if (help && hint) {
+            const toggleHint = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                hint.hidden = !hint.hidden;
+            };
+            help.addEventListener('click', toggleHint);
+            help.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') toggleHint(event); });
+        }
         button.addEventListener('click', () => {
             const collapsed = !section.classList.contains('is-collapsed');
             apply(collapsed);
