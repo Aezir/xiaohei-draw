@@ -33,6 +33,29 @@ test('同一楼层同一轮多次请求：只渲染一次、只发一次 MESSAGE
     assert.deepEqual(calls[1], ['emit', 3]);
 });
 
+test('自愈：渲染后状态栏还是代码就补发 MESSAGE_UPDATED，好了就停，最多补 2 次', async () => {
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    const run = async (brokenChecks) => {
+        const { calls, host } = fakeHost();
+        const timers = [];
+        let checks = 0;
+        const renderer = createMessageRerenderer({
+            loadHost: async () => host,
+            setTimer: callback => timers.push(callback),
+            needsRenderRetry: () => checks++ < brokenChecks,
+        });
+        await renderer.rerender(5, { mes: '原文', extra: {} });
+        while (timers.length) {
+            await timers.shift()();
+            await flush();
+        }
+        return calls.filter(call => call[0] === 'emit').length;
+    };
+    assert.equal(await run(0), 1, '渲染正常：只发原来那一次');
+    assert.equal(await run(1), 2, '第一次检查还是代码：补发一次，第二次检查正常就停');
+    assert.equal(await run(99), 3, '一直是代码：最多补发 2 次');
+});
+
 test('规划文本只用于显示：浅拷贝，去掉 display_text，不改原 message', async () => {
     const { calls, host } = fakeHost();
     const renderer = createMessageRerenderer({ loadHost: async () => host });

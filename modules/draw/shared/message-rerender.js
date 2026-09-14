@@ -24,9 +24,39 @@ export function createMessageRerenderer({
     loadHost,
     isEditing = () => false,
     schedule = callback => queueMicrotask(callback),
+    // 自愈：渲染后隔 retryDelayMs 查一次，needsRenderRetry(messageId) 为 true（状态栏还是代码）就再发一次 MESSAGE_UPDATED，最多 maxRetries 次
+    needsRenderRetry = () => false,
+    retryDelayMs = 500,
+    maxRetries = 2,
+    setTimer = (callback, ms) => setTimeout(callback, ms),
 } = {}) {
     const entries = new Map();
     const selfDepth = new Map();
+
+    async function emitAsSelf(host, key) {
+        selfDepth.set(key, (selfDepth.get(key) || 0) + 1);
+        try {
+            await host.emitMessageUpdated(key);
+        } finally {
+            const depth = (selfDepth.get(key) || 1) - 1;
+            if (depth > 0) selfDepth.set(key, depth);
+            else selfDepth.delete(key);
+        }
+    }
+
+    function scheduleHeal(key, attempt = 0) {
+        if (attempt >= maxRetries) return;
+        setTimer(async () => {
+            try {
+                // 期间又有新的渲染请求或用户在编辑：交给那一轮
+                if (entries.has(key) || isEditing(key) || !needsRenderRetry(key)) return;
+                await emitAsSelf(await loadHost(), key);
+                scheduleHeal(key, attempt + 1);
+            } catch {
+                /* 自愈失败不影响主流程 */
+            }
+        }, retryDelayMs);
+    }
 
     const scheduleFlush = (key, entry) => {
         if (entry.scheduled || entry.running) return;
@@ -50,15 +80,9 @@ export function createMessageRerenderer({
             const host = await loadHost();
             if (request && !isEditing(key)) {
                 host.updateMessageBlock(key, buildRenderTarget(request.message, request.text));
-                selfDepth.set(key, (selfDepth.get(key) || 0) + 1);
-                try {
-                    await host.emitMessageUpdated(key);
-                } finally {
-                    const depth = (selfDepth.get(key) || 1) - 1;
-                    if (depth > 0) selfDepth.set(key, depth);
-                    else selfDepth.delete(key);
-                }
+                await emitAsSelf(host, key);
                 rendered = true;
+                scheduleHeal(key);
             }
         } catch (error) {
             failure = error;

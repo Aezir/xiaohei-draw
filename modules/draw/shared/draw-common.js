@@ -83,6 +83,17 @@ const chatMessageRerenderer = createMessageRerenderer({
         };
     },
     isEditing: messageId => isMessageBeingEdited(messageId),
+    // 酒馆助手认的状态栏代码块（pre 里含 html> / <head> / <body）还没变成 iframe = 需要再触发一次渲染
+    needsRenderRetry: (messageId) => {
+        const mesText = getMesTextElement(messageId);
+        if (!mesText) return false;
+        return Array.from(mesText.querySelectorAll('pre')).some((pre) => {
+            const text = pre.textContent || '';
+            if (!['html>', '<head>', '<body'].some(key => text.includes(key))) return false;
+            const box = pre.closest('div.TH-render');
+            return !box || !box.querySelector('iframe');
+        });
+    },
 });
 
 export function rerenderChatMessage(messageId, message, options = {}) {
