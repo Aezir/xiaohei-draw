@@ -9,6 +9,11 @@
     padding: 4px 0 2px;
 }
 
+.xbdraw-settings,
+.xbdraw-settings * { -webkit-tap-highlight-color: transparent; }
+.xbdraw-settings button:focus:not(:focus-visible),
+.xbdraw-settings input:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+
 .xbdraw-settings .xbdraw-item {
     display: flex;
     align-items: center;

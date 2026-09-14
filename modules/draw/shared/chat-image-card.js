@@ -36,7 +36,7 @@ export function escapeHtml(str) {
 }
 
 const CHAT_IMAGE_CSS = `
-.xb-nd-img, .xb-nd-img *, .xb-nd-img *::before, .xb-nd-img *::after { border-style: none !important; outline-style: none !important; box-shadow: none !important; }
+.xb-nd-img, .xb-nd-img *, .xb-nd-img *::before, .xb-nd-img *::after { border-style: none !important; outline-style: none !important; box-shadow: none !important; -webkit-tap-highlight-color: transparent; }
 .xb-nd-img { position: relative; display: block; box-sizing: border-box; width: fit-content; max-width: 100%; margin: 0.8em auto; padding: 0; border-radius: 9px; background: transparent; color: inherit; text-align: center; font-size: 13px; line-height: 1.4; }
 .xb-nd-img[data-state="failed"], .xb-nd-img[data-state="pending"] { width: 100%; padding: 12px; border-radius: 12px; background: rgba(128, 128, 128, 0.14); color: var(--SmartThemeBodyColor, inherit); }
 .xb-nd-img.editing { width: 100%; }
@@ -82,6 +82,12 @@ const CHAT_IMAGE_CSS = `
 .xb-nd-edit-input { display: block; box-sizing: border-box; width: 100%; min-height: 60px; margin: 0; padding: 4px 8px; border-radius: 6px; background: #2e2e2e; color: #e6e6e4; font-family: ${UI_FONT}; font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: normal; resize: vertical; transition: background 0.12s; }
 .xb-nd-edit-input:hover { background: #333333; }
 .xb-nd-edit-input:focus { background: #383838; }
+/* 酒馆浅色主题会改楼层里 textarea / pre 的底色和定位：这里锁回设置页同款深色输入框，高亮层叠回输入框上 */
+.xb-nd-edit .xbhl-wrap { position: relative !important; display: block !important; margin: 0 !important; }
+.xb-nd-edit textarea.xb-nd-edit-input { background: #2e2e2e !important; border-style: none !important; outline: none !important; box-shadow: none !important; }
+.xb-nd-edit textarea.xb-nd-edit-input:hover { background: #333333 !important; }
+.xb-nd-edit textarea.xb-nd-edit-input:focus { background: #383838 !important; }
+.xb-nd-edit pre.xbhl-pre { position: absolute !important; display: block !important; margin: 0 !important; max-width: none !important; max-height: none !important; background: transparent !important; border-style: none !important; overflow: hidden !important; white-space: pre-wrap !important; text-shadow: none !important; }
 .xb-nd-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
 .xb-nd-edit .xb-nd-btn { min-height: 28px; padding: 4px 10px; border-radius: 6px; background: #2a2a2a; color: #e6e6e4; font-family: ${UI_FONT}; font-size: 12px; }
 .xb-nd-edit .xb-nd-btn:hover { background: #333333; }

@@ -1,7 +1,7 @@
 // floating-panel-styles.js
 // 楼层按钮 / 悬浮球的样式（Notion 暗色，零边线零阴影）。单独成文件，harness 可以不经过酒馆模块直接引用。
 export const FLOATING_PANEL_CSS = `
-.nd-float, .nd-float *, .nd-float *::before, .nd-float *::after { border-style: none !important; outline-style: none !important; box-shadow: none !important; }
+.nd-float, .nd-float *, .nd-float *::before, .nd-float *::after { border-style: none !important; outline-style: none !important; box-shadow: none !important; -webkit-tap-highlight-color: transparent; }
 .nd-float {
     --nd-h: 34px;
     --nd-bg: #202020;
