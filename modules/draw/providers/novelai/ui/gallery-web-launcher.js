@@ -20,6 +20,10 @@ const CSS = `
 #nd-gallery-web-slot { display: flex; flex-direction: column; gap: 6px; }
 #nd-gallery-web-slot [hidden] { display: none !important; }
 #nd-gallery-web-slot .nd-gw-status:empty { display: none; }
+.nd-sec-toggle { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nd-sec-toggle .nd-sec-arrow { margin-left: auto; font-size: 18px; opacity: .6; transition: transform .2s; }
+.nd-gallery-section.is-collapsed .nd-sec-arrow { transform: rotate(-90deg); }
+.nd-gallery-section.is-collapsed .nd-sec-body { display: none; }
 .nd-gw-frame { display: block; width: 100%; height: calc(100dvh - 48px); min-height: 420px; border: 0; border-radius: var(--radius-lg, 10px); background: var(--bg-primary); }
 `;
 
@@ -120,6 +124,41 @@ async function onMessage(event) {
     }
 }
 
+// 「文生图 / 画廊」两块可折叠：点标题收起/展开，状态记在本机浏览器（localStorage），默认都展开。
+const COLLAPSE_KEY = 'xbdraw.gallerySections.collapsed';
+
+function readCollapsed() {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}') || {}; } catch { return {}; }
+}
+
+function isGalleryExpanded() {
+    const section = document.querySelector('.nd-sec-toggle[data-sec="gallery"]')?.closest('.nd-gallery-section');
+    return !section?.classList.contains('is-collapsed');
+}
+
+function setupSectionCollapse(onExpand) {
+    const saved = readCollapsed();
+    document.querySelectorAll('.nd-sec-toggle[data-sec]').forEach((button) => {
+        const section = button.closest('.nd-gallery-section');
+        if (!section || button.dataset.collapseBound) return;
+        button.dataset.collapseBound = '1';
+        const key = button.dataset.sec;
+        const apply = (collapsed) => {
+            section.classList.toggle('is-collapsed', collapsed);
+            button.setAttribute('aria-expanded', String(!collapsed));
+        };
+        apply(saved[key] === true);
+        button.addEventListener('click', () => {
+            const collapsed = !section.classList.contains('is-collapsed');
+            apply(collapsed);
+            const next = readCollapsed();
+            next[key] = collapsed;
+            try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next)); } catch { /* 存不了就只在本次生效 */ }
+            if (!collapsed) onExpand(key);
+        });
+    });
+}
+
 export function mountGalleryWebEmbed(slot) {
     if (!slot) return;
     E.slot = slot;
@@ -131,7 +170,9 @@ export function mountGalleryWebEmbed(slot) {
 
     const view = document.getElementById('view-gallery');
     const visible = () => !view || view.classList.contains('active');
-    const onShow = () => { loadFrame(); fitHeight(); void renderNote(); };
+    // 画廊收起时不加载 iframe，展开时才加载
+    const onShow = () => { if (isGalleryExpanded()) { loadFrame(); fitHeight(); } void renderNote(); };
+    setupSectionCollapse((key) => { if (key === 'gallery' && visible()) onShow(); });
     if (visible()) onShow();
     if (view && typeof MutationObserver === 'function') {
         // 只在 active 真的变了才处理（回调里不写被观察的属性）

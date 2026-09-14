@@ -1576,7 +1576,8 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 
                 <!-- 上：文生图（聊天里生成、缓存在本机的图） -->
                 <section class="nd-gallery-section" aria-labelledby="nd_sec_t2i">
-                <div class="nd-subhead" id="nd_sec_t2i"><i class="ri-magic-line"></i>文生图</div>
+                <button type="button" class="nd-subhead nd-sec-toggle" id="nd_sec_t2i" data-sec="t2i" aria-expanded="true"><i class="ri-magic-line"></i>文生图<i class="ri-arrow-down-s-line nd-sec-arrow" aria-hidden="true"></i></button>
+                <div class="nd-sec-body">
                 <div class="card">
                     <div class="nd-cache-bar">
                         <div class="nd-cache-stats">
@@ -1610,12 +1611,13 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                     <div>暂无图片</div>
                     <p>生成的配图会显示在这里，点击角色展开查看</p>
                 </div>
+                </div>
                 </section>
 
                 <!-- 下：画廊（完整画廊网站直接嵌在页面里，ui/gallery-web-launcher.js） -->
                 <section class="nd-gallery-section" aria-labelledby="nd_sec_gallery">
-                <div class="nd-subhead" id="nd_sec_gallery"><i class="ri-gallery-view-2"></i>画廊</div>
-                <div id="nd-gallery-web-slot"></div>
+                <button type="button" class="nd-subhead nd-sec-toggle" id="nd_sec_gallery" data-sec="gallery" aria-expanded="true"><i class="ri-gallery-view-2"></i>画廊<i class="ri-arrow-down-s-line nd-sec-arrow" aria-hidden="true"></i></button>
+                <div class="nd-sec-body"><div id="nd-gallery-web-slot"></div></div>
                 </section>
             </div>
 
