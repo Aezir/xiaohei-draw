@@ -5,7 +5,7 @@
 // runner were removed in P0 (2026-09-13); only NovelAI remains.
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../script.js";
-import { EXT_ID, extensionFolderPath } from "./core/constants.js";
+import { EXT_ID, EXT_FOLDER_ID, extensionFolderPath } from "./core/constants.js";
 import { EventCenter } from "./core/event-manager.js";
 import {
     cleanupChatMessageImages,
@@ -31,10 +31,10 @@ const DRAW_PROVIDER_VALUES = new Set(['disabled', 'novelai']);
 extension_settings[EXT_ID] ||= { enabled: true, drawProvider: 'disabled' };
 const settings = extension_settings[EXT_ID];
 
-// 旧存档里选过已删除的 Provider（两个非 NovelAI 后端）时，迁移成「关闭」并保存一次。
-if (settings.drawProvider !== undefined && !DRAW_PROVIDER_VALUES.has(settings.drawProvider)) {
-    console.info(`${LOG} 画图后端 "${settings.drawProvider}" 已移除，已切换为关闭`);
-    settings.drawProvider = 'disabled';
+// 面板已去掉「画图后端」下拉：只剩 NovelAI，开关由「启用小黑生图」一个控制。
+if (settings.drawProvider !== 'novelai') {
+    console.info(`${LOG} 画图后端固定为 NovelAI（原值 "${settings.drawProvider}"）`);
+    settings.drawProvider = 'novelai';
     saveSettingsDebounced();
 }
 
@@ -220,6 +220,67 @@ function syncControls() {
         .toggleClass('disabled-control', !isEnabled);
 }
 
+// 检查更新：走酒馆自带的扩展接口（和扩展管理里的「更新」同一套，git pull 插件目录）。
+// 先按「当前用户的扩展」查，找不到（404）再按「所有用户共用的扩展」查。
+function setupUpdateCheck() {
+    const $button = $('#xbdraw_check_update');
+    const $status = $('#xbdraw_update_status');
+    let updateReady = null; // 查到有新版本时 = { global }
+
+    const post = (endpoint, global) => fetch(`/api/extensions/${endpoint}`, {
+        method: 'POST',
+        headers: SillyTavern.getContext().getRequestHeaders(),
+        body: JSON.stringify({ extensionName: EXT_FOLDER_ID, global }),
+    });
+    const findInstall = async () => {
+        for (const global of [false, true]) {
+            const response = await post('version', global);
+            if (response.status === 404) continue;
+            if (!response.ok) throw new Error(`酒馆返回 ${response.status}`);
+            return { global, data: await response.json() };
+        }
+        throw new Error('没找到插件目录');
+    };
+    const setBusy = (busy, text) => {
+        $button.prop('disabled', busy);
+        if (text !== undefined) $status.text(text);
+    };
+
+    $button.on('click', async () => {
+        if (updateReady) {
+            setBusy(true, '正在更新…');
+            try {
+                const response = await post('update', updateReady.global);
+                if (!response.ok) throw new Error(response.status === 403 ? '没有权限更新共用扩展，请用管理员账号' : `酒馆返回 ${response.status}`);
+                const data = await response.json();
+                updateReady = null;
+                $button.find('span').text('检查');
+                setBusy(false, `已更新到 ${data.shortCommitHash || '最新版'}，刷新页面后生效`);
+                if (window.confirm('小黑生图已更新，现在刷新页面吗？')) location.reload();
+            } catch (error) {
+                setBusy(false, `更新失败：${error?.message || error}`);
+            }
+            return;
+        }
+        setBusy(true, '正在检查…');
+        try {
+            const { global, data } = await findInstall();
+            const version = String(data.currentCommitHash || '').slice(0, 7);
+            if (!data.remoteUrl) {
+                setBusy(false, '这个目录不是从 GitHub 装的，没法在线更新');
+            } else if (data.isUpToDate) {
+                setBusy(false, `已是最新版${version ? `（${version}）` : ''}`);
+            } else {
+                updateReady = { global };
+                $button.find('span').text('立即更新');
+                setBusy(false, `有新版本（当前 ${version || '未知'}）`);
+            }
+        } catch (error) {
+            setBusy(false, `检查失败：${error?.message || error}`);
+        }
+    });
+}
+
 async function setupSettings() {
     const container = document.getElementById('extensions_settings');
     if (!container) return;
@@ -258,6 +319,8 @@ async function setupSettings() {
             await initActiveDrawProvider();
             try { refreshChatMessageImages(); } catch { }
         });
+
+    setupUpdateCheck();
 
     $('#xbdraw_open_settings').on('click', function () {
         if (!isEnabled) return;

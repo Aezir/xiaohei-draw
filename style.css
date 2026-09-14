@@ -1,22 +1,107 @@
-.xbdraw-settings .xbdraw-row {
+/* 扩展抽屉面板：Notion 风格。层级只靠底色和留白，不加任何描边；颜色跟随酒馆主题，强调色用小黑粉 */
+.xbdraw-settings {
+    --xbd-accent: #e889b0;
+    --xbd-hover: color-mix(in srgb, var(--SmartThemeBodyColor, #888) 7%, transparent);
+    --xbd-soft: color-mix(in srgb, var(--SmartThemeBodyColor, #888) 12%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0 2px;
+}
+
+.xbdraw-settings .xbdraw-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-height: 1.75rem;
-    margin-top: 6px;
-}
-
-.xbdraw-settings .xbdraw-row select {
-    width: auto;
-    max-width: 9rem;
+    gap: 10px;
+    width: 100%;
     margin: 0;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: default;
+    transition: background-color .15s;
+    box-sizing: border-box;
 }
 
-.xbdraw-settings .xbdraw-row .menu_button {
-    margin-left: auto;
+.xbdraw-settings .xbdraw-item:hover { background: var(--xbd-hover); }
+.xbdraw-settings label.xbdraw-item,
+.xbdraw-settings .xbdraw-item-action { cursor: pointer; }
+
+.xbdraw-settings .xbdraw-item-icon {
+    flex: none;
+    font-size: 17px;
+    opacity: .7;
+}
+
+.xbdraw-settings .xbdraw-item-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.xbdraw-settings .xbdraw-item-title { font-size: .95em; font-weight: 500; }
+.xbdraw-settings .xbdraw-item-desc { font-size: .8em; opacity: .6; line-height: 1.4; }
+.xbdraw-settings .xbdraw-item-arrow { flex: none; font-size: 18px; opacity: .45; }
+
+/* 开关 */
+.xbdraw-settings .xbdraw-switch {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    position: relative;
+    width: 32px;
+    height: 18px;
+    margin: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--xbd-soft);
+    cursor: pointer;
+    transition: background-color .2s;
+}
+.xbdraw-settings .xbdraw-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .2s;
+}
+.xbdraw-settings .xbdraw-switch:checked { background: var(--xbd-accent); }
+.xbdraw-settings .xbdraw-switch:checked::after { transform: translateX(14px); }
+
+/* 小按钮 */
+.xbdraw-settings .xbdraw-btn {
+    flex: none;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--xbd-soft);
+    color: inherit;
+    font: inherit;
+    font-size: .85em;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+}
+.xbdraw-settings .xbdraw-btn:hover:not(:disabled) { background: var(--xbd-accent); color: #1a1a1a; }
+.xbdraw-settings .xbdraw-btn:disabled { opacity: .5; cursor: wait; }
+
+.xbdraw-settings .xbdraw-footnote {
+    padding: 6px 10px 0;
+    font-size: .75em;
+    opacity: .4;
 }
 
 .xbdraw-settings .disabled-control {
-    opacity: .55;
+    opacity: .45;
     cursor: not-allowed;
 }
+.xbdraw-settings .disabled-control:hover { background: transparent; }

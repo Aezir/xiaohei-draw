@@ -5,22 +5,34 @@
   </div>
   <div class="inline-drawer-content">
     <div class="xbdraw-settings">
-      <div class="xbdraw-row">
-        <input type="checkbox" id="xbdraw_enabled" />
-        <label for="xbdraw_enabled">启用小黑生图</label>
+      <label class="xbdraw-item" for="xbdraw_enabled">
+        <i class="ri-flashlight-line xbdraw-item-icon"></i>
+        <span class="xbdraw-item-text">
+          <span class="xbdraw-item-title">启用小黑生图</span>
+          <span class="xbdraw-item-desc">关掉后不再配图，已有图片照常显示</span>
+        </span>
+        <input type="checkbox" id="xbdraw_enabled" class="xbdraw-switch" />
+      </label>
+
+      <div class="xbdraw-item">
+        <i class="ri-refresh-line xbdraw-item-icon"></i>
+        <span class="xbdraw-item-text">
+          <span class="xbdraw-item-title">检查更新</span>
+          <span class="xbdraw-item-desc" id="xbdraw_update_status">从 GitHub 拉取最新版</span>
+        </span>
+        <button id="xbdraw_check_update" class="xbdraw-btn" type="button"><span>检查</span></button>
       </div>
-      <div class="xbdraw-row">
-        <label for="xbdraw_provider">画图后端</label>
-        <select id="xbdraw_provider" class="text_pole">
-          <option value="disabled">关闭</option>
-          <option value="novelai">NovelAI</option>
-        </select>
-        <button id="xbdraw_open_settings" class="menu_button menu_button_icon" type="button" title="打开画图详细设置">
-          <i class="ri-palette-line"></i>
-          <small>画图设置</small>
-        </button>
-      </div>
-      <small>Based on LittleWhiteBox by biex</small>
+
+      <button id="xbdraw_open_settings" class="xbdraw-item xbdraw-item-action" type="button">
+        <i class="ri-palette-line xbdraw-item-icon"></i>
+        <span class="xbdraw-item-text">
+          <span class="xbdraw-item-title">画图设置</span>
+          <span class="xbdraw-item-desc">参数、角色、提示词、API、图片管理</span>
+        </span>
+        <i class="ri-arrow-right-s-line xbdraw-item-arrow"></i>
+      </button>
+
+      <div class="xbdraw-footnote">Based on LittleWhiteBox by biex</div>
     </div>
   </div>
 </div>
