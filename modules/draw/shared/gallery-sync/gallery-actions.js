@@ -67,6 +67,7 @@ export function registerGalleryLightboxAction(registerLightboxAction, deps = {})
             const key = `${ctx && ctx.slotId}#${ctx && ctx.index}`;
             if (busy.has(key)) return null;
             busy.add(key);
+            notify('正在存入画廊…', 'info');   // 点下去马上有反馈，存完再报结果
             try {
                 const target = await deps.getTarget(ctx);
                 if (!target) throw new Error('画廊还不能用：本机存储没有准备好');

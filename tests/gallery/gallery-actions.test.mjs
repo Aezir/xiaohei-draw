@@ -47,13 +47,14 @@ test('not connected → saves to the local gallery; connected → remote; batch 
     const run = reg.list[0].run;
     const r1 = await run(ctxOf('one'));
     assert.equal(r1.target, 'local');
-    assert.match(notes[0][1], /本机画廊/);
+    assert.deepEqual(notes[0], ['info', '正在存入画廊…'], '点下去先提示，不等存完');
+    assert.match(notes[1][1], /本机画廊/);
     assert.equal((await local.list()).items[0].meta.batch, '说话的人');
 
     await credentials.save(creds);
     const r2 = await run(ctxOf('two'));
     assert.equal(r2.target, 'remote');
-    assert.deepEqual(notes[1], ['success', '已存入画廊']);
+    assert.deepEqual(notes.at(-1), ['success', '已存入画廊']);
     assert.ok(fake.files().has(`imgs/${r2.id}.f`));
 });
 

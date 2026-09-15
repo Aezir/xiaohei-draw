@@ -17,7 +17,7 @@ import {
     getDisplayPreviewForSlot, storeFailedPlaceholder, deleteFailedRecordsForSlot,
     setSlotSelection, clearSlotSelection,
     deletePreview, getCacheStats, clearExpiredCache, clearAllCache,
-    getGallerySummary, getCharacterPreviews, openGallery, closeGallery, destroyGalleryCache,
+    getGallerySummary, getCharacterPreviews, getCharacterPreviewMeta, getPreviewImages, openGallery, closeGallery, destroyGalleryCache,
     getPreviewDisplayUrl, preloadPreviewDisplayUrl, warmSlotPreviewNeighbors
 } from '../../shared/gallery-cache.js';
 import {
@@ -4601,13 +4601,25 @@ async function handleFrameMessage(event) {
             try {
                 const charName = data.charName;
                 if (!charName) break;
-                const slots = await getCharacterPreviews(charName);
+                // 只传编号和时间，图片本体由 LOAD_PREVIEW_IMAGES 按需取
+                const slots = await getCharacterPreviewMeta(charName);
                 {
                     const iframe = document.getElementById('xbdraw-novel-draw-iframe');
                     if (iframe) postToIframe(iframe, { type: 'CHARACTER_PREVIEWS_LOADED', charName, slots }, 'XBDraw-NovelDraw');
                 }
             } catch (e) {
                 console.error('[NovelDraw] 加载预览失败:', e);
+            }
+            break;
+        }
+
+        case 'LOAD_PREVIEW_IMAGES': {
+            try {
+                const images = await getPreviewImages(data.imgIds);
+                const frame = document.getElementById('xbdraw-novel-draw-iframe');
+                if (frame?.isConnected) postToIframe(frame, { type: 'PREVIEW_IMAGES_LOADED', images }, 'XBDraw-NovelDraw');
+            } catch (e) {
+                console.error('[NovelDraw] 按需加载图片失败:', e);
             }
             break;
         }

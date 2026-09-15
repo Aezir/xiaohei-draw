@@ -23,7 +23,9 @@ export { registerLightboxAction, listLightboxActions, downloadImageOriginal };
 const DB_NAME = 'xb_novel_draw_previews';
 const DB_STORE = 'previews';
 const DB_SELECTIONS_STORE = 'selections';
-const DB_VERSION = 3;
+// 轻量元数据（不含图片本体）：统计、角色列表只读这个，打开图片管理不再把所有 base64 读进内存
+const DB_META_STORE = 'preview_meta';
+const DB_VERSION = 4;
 const CACHE_TTL = 5 * 60 * 1000;
 const PREVIEW_CACHE_LIMIT = 64;
 const PREVIEW_OBJECT_URL_LIMIT = 128;
@@ -382,7 +384,7 @@ function isDbValid() {
 export async function openDB() {
     if (dbOpening) return dbOpening;
     
-    if (isDbValid() && db.objectStoreNames.contains(DB_SELECTIONS_STORE)) {
+    if (isDbValid() && db.objectStoreNames.contains(DB_SELECTIONS_STORE) && db.objectStoreNames.contains(DB_META_STORE)) {
         return db;
     }
     
@@ -423,10 +425,86 @@ export async function openDB() {
             if (!database.objectStoreNames.contains(DB_SELECTIONS_STORE)) {
                 database.createObjectStore(DB_SELECTIONS_STORE, { keyPath: 'slotId' });
             }
+            if (!database.objectStoreNames.contains(DB_META_STORE)) {
+                const meta = database.createObjectStore(DB_META_STORE, { keyPath: 'imgId' });
+                meta.createIndex('characterName', 'characterName');
+            }
         };
     });
-    
+
     return dbOpening;
+}
+
+function toPreviewMeta(record = {}) {
+    const hasData = !!(record.base64 || record.savedUrl);
+    return {
+        imgId: record.imgId,
+        slotId: record.slotId || record.imgId,
+        characterName: record.characterName || 'Unknown',
+        timestamp: Number(record.timestamp) || 0,
+        status: record.status === 'failed' ? 'failed' : 'success',
+        hasData,
+        savedUrl: record.savedUrl || null,
+        size: Math.round((record.base64?.length || 0) * 0.75),
+    };
+}
+
+function isShownMeta(meta) {
+    return meta && meta.status !== 'failed' && meta.hasData;
+}
+
+let metaSyncPromise = null;
+
+// 老数据库没有元数据，或数量对不上（旧版本写入过）：整表扫一次重建。之后只在数量变化时再扫。
+async function ensureMetaSynced() {
+    if (metaSyncPromise) return metaSyncPromise;
+    metaSyncPromise = (async () => {
+        const database = await openDB();
+        const counts = await new Promise((resolve) => {
+            try {
+                const tx = database.transaction([DB_STORE, DB_META_STORE], 'readonly');
+                const a = tx.objectStore(DB_STORE).count();
+                const b = tx.objectStore(DB_META_STORE).count();
+                tx.oncomplete = () => resolve([a.result, b.result]);
+                tx.onerror = () => resolve([0, -1]);
+            } catch {
+                resolve([0, -1]);
+            }
+        });
+        if (counts[0] === counts[1]) return;
+        await new Promise((resolve) => {
+            try {
+                const tx = database.transaction([DB_STORE, DB_META_STORE], 'readwrite');
+                const metaStore = tx.objectStore(DB_META_STORE);
+                metaStore.clear();
+                tx.objectStore(DB_STORE).openCursor().onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (!cursor) return;
+                    metaStore.put(toPreviewMeta(cursor.value));
+                    cursor.continue();
+                };
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => resolve();
+            } catch {
+                resolve();
+            }
+        });
+    })().finally(() => { metaSyncPromise = null; });
+    return metaSyncPromise;
+}
+
+async function listAllMeta() {
+    await ensureMetaSynced();
+    const database = await openDB();
+    return new Promise((resolve) => {
+        try {
+            const request = database.transaction(DB_META_STORE, 'readonly').objectStore(DB_META_STORE).getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => resolve([]);
+        } catch {
+            resolve([]);
+        }
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -542,11 +620,15 @@ export async function importPortablePreviews(previews = [], selections = [], opt
 
     await new Promise((resolve, reject) => {
         try {
-            const stores = [DB_STORE];
+            const stores = [DB_STORE, DB_META_STORE];
             if (database.objectStoreNames.contains(DB_SELECTIONS_STORE)) stores.push(DB_SELECTIONS_STORE);
             const tx = database.transaction(stores, 'readwrite');
             const previewStore = tx.objectStore(DB_STORE);
-            records.forEach((record) => previewStore.put(record));
+            const metaStore = tx.objectStore(DB_META_STORE);
+            records.forEach((record) => {
+                previewStore.put(record);
+                metaStore.put(toPreviewMeta(record));
+            });
             if (stores.includes(DB_SELECTIONS_STORE)) {
                 const selectionStore = tx.objectStore(DB_SELECTIONS_STORE);
                 selectionRows.forEach((selection) => selectionStore.put(selection));
@@ -624,8 +706,8 @@ export async function storePreview(opts) {
     
     return new Promise((resolve, reject) => {
         try {
-            const tx = database.transaction(DB_STORE, 'readwrite');
-            tx.objectStore(DB_STORE).put({
+            const tx = database.transaction([DB_STORE, DB_META_STORE], 'readwrite');
+            const record = {
                 imgId,
                 slotId: resolvedSlotId,
                 messageId,
@@ -647,7 +729,9 @@ export async function storePreview(opts) {
                 negativePrompt,
                 params: params && typeof params === 'object' ? params : null,
                 timestamp: Date.now()
-            });
+            };
+            tx.objectStore(DB_STORE).put(record);
+            tx.objectStore(DB_META_STORE).put(toPreviewMeta(record));
             tx.oncomplete = () => {
                 invalidateCache(resolvedSlotId);
                 publishCacheChange([resolvedSlotId]);
@@ -801,8 +885,9 @@ export async function deletePreview(imgId) {
     
     return new Promise((resolve, reject) => {
         try {
-            const tx = database.transaction(DB_STORE, 'readwrite');
+            const tx = database.transaction([DB_STORE, DB_META_STORE], 'readwrite');
             tx.objectStore(DB_STORE).delete(imgId);
+            tx.objectStore(DB_META_STORE).delete(imgId);
             tx.oncomplete = () => {
                 revokePreviewObjectUrl(imgId);
                 if (slotId) invalidateCache(slotId);
@@ -825,37 +910,24 @@ export async function deleteFailedRecordsForSlot(slotId) {
 }
 
 export async function getCacheStats() {
-    const database = await openDB();
-    return new Promise((resolve) => {
-        try {
-            const tx = database.transaction(DB_STORE, 'readonly');
-            const store = tx.objectStore(DB_STORE);
-            const countReq = store.count();
-            let totalSize = 0, successCount = 0, failedCount = 0;
-            
-            store.openCursor().onsuccess = (e) => {
-                const cursor = e.target.result;
-                if (cursor) { 
-                    totalSize += (cursor.value.base64?.length || 0) * 0.75;
-                    if (cursor.value.status === 'failed' || (!cursor.value.base64 && !cursor.value.savedUrl)) {
-                        failedCount++;
-                    } else {
-                        successCount++;
-                    }
-                    cursor.continue(); 
-                }
-            };
-            tx.oncomplete = () => resolve({ 
-                count: countReq.result || 0, 
-                successCount,
-                failedCount,
-                sizeBytes: Math.round(totalSize), 
-                sizeMB: (totalSize / 1024 / 1024).toFixed(2) 
-            });
-        } catch {
-            resolve({ count: 0, successCount: 0, failedCount: 0, sizeBytes: 0, sizeMB: '0' });
+    try {
+        const metas = await listAllMeta();
+        let totalSize = 0, successCount = 0, failedCount = 0;
+        for (const meta of metas) {
+            totalSize += meta.size || 0;
+            if (isShownMeta(meta)) successCount++;
+            else failedCount++;
         }
-    });
+        return {
+            count: metas.length,
+            successCount,
+            failedCount,
+            sizeBytes: Math.round(totalSize),
+            sizeMB: (totalSize / 1024 / 1024).toFixed(2),
+        };
+    } catch {
+        return { count: 0, successCount: 0, failedCount: 0, sizeBytes: 0, sizeMB: '0' };
+    }
 }
 
 export async function clearExpiredCache(cacheDays = 3) {
@@ -865,8 +937,9 @@ export async function clearExpiredCache(cacheDays = 3) {
     
     return new Promise((resolve) => {
         try {
-            const tx = database.transaction(DB_STORE, 'readwrite');
+            const tx = database.transaction([DB_STORE, DB_META_STORE], 'readwrite');
             const store = tx.objectStore(DB_STORE);
+            const metaStore = tx.objectStore(DB_META_STORE);
             store.openCursor().onsuccess = (e) => {
                 const cursor = e.target.result;
                 if (cursor) { 
@@ -877,8 +950,9 @@ export async function clearExpiredCache(cacheDays = 3) {
 
                     if (isExpiredUnsaved || (isFailed && record.timestamp < cutoff)) { 
                         revokePreviewObjectUrl(record.imgId);
-                        cursor.delete(); 
-                        cleaned++; 
+                        cursor.delete();
+                        metaStore.delete(record.imgId);
+                        cleaned++;
                         cursor.continue(); 
                         return;
                     }
@@ -887,6 +961,7 @@ export async function clearExpiredCache(cacheDays = 3) {
                         record.base64 = null;
                         revokePreviewObjectUrl(record.imgId);
                         cursor.update(record);
+                        metaStore.put(toPreviewMeta(record));
                         cleaned++;
                     }
 
@@ -908,13 +983,14 @@ export async function clearAllCache() {
     const database = await openDB();
     return new Promise((resolve, reject) => {
         try {
-            const stores = [DB_STORE];
+            const stores = [DB_STORE, DB_META_STORE];
             if (database.objectStoreNames.contains(DB_SELECTIONS_STORE)) {
                 stores.push(DB_SELECTIONS_STORE);
             }
             const tx = database.transaction(stores, 'readwrite');
             tx.objectStore(DB_STORE).clear();
-            if (stores.length > 1) {
+            tx.objectStore(DB_META_STORE).clear();
+            if (stores.includes(DB_SELECTIONS_STORE)) {
                 tx.objectStore(DB_SELECTIONS_STORE).clear();
             }
             tx.oncomplete = () => {
@@ -931,50 +1007,75 @@ export async function clearAllCache() {
 }
 
 export async function getGallerySummary() {
+    try {
+        const summary = {};
+        for (const item of await listAllMeta()) {
+            if (!isShownMeta(item)) continue;
+            const charName = item.characterName || 'Unknown';
+            if (!summary[charName]) {
+                summary[charName] = { count: 0, totalSize: 0, slots: {}, latestTimestamp: 0 };
+            }
+            const slotId = item.slotId || item.imgId;
+            if (!summary[charName].slots[slotId]) {
+                summary[charName].slots[slotId] = { count: 0, hasSaved: false, latestTimestamp: 0, latestImgId: null };
+            }
+            const slot = summary[charName].slots[slotId];
+            slot.count++;
+            if (item.savedUrl) slot.hasSaved = true;
+            if (item.timestamp > slot.latestTimestamp) {
+                slot.latestTimestamp = item.timestamp;
+                slot.latestImgId = item.imgId;
+            }
+            summary[charName].count++;
+            summary[charName].totalSize += item.size || 0;
+            if (item.timestamp > summary[charName].latestTimestamp) {
+                summary[charName].latestTimestamp = item.timestamp;
+            }
+        }
+        return summary;
+    } catch {
+        return {};
+    }
+}
+
+/** 图片管理展开角色用：只有每组的图片编号、时间、已保存地址，不含图片本体。 */
+export async function getCharacterPreviewMeta(charName) {
+    try {
+        const slots = {};
+        for (const item of await listAllMeta()) {
+            if ((item.characterName || 'Unknown') !== charName || !isShownMeta(item)) continue;
+            const slotId = item.slotId || item.imgId;
+            (slots[slotId] ||= []).push({ imgId: item.imgId, slotId, timestamp: item.timestamp, savedUrl: item.savedUrl });
+        }
+        for (const sid in slots) slots[sid].sort((a, b) => b.timestamp - a.timestamp);
+        return slots;
+    } catch {
+        return {};
+    }
+}
+
+/** 按需取图（缩略图滚进屏幕、点开大图时）。 */
+export async function getPreviewImages(imgIds = []) {
+    const ids = [...new Set((Array.isArray(imgIds) ? imgIds : []).map(id => String(id || '')).filter(Boolean))].slice(0, 60);
+    if (!ids.length) return [];
     const database = await openDB();
     return new Promise((resolve) => {
         try {
-            const tx = database.transaction(DB_STORE, 'readonly');
-            const store = tx.objectStore(DB_STORE);
-            const summary = {};
-
-            store.openCursor().onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (!cursor) {
-                    resolve(summary);
-                    return;
-                }
-                const item = cursor.value;
-                if (item.status !== 'failed' && (item.base64 || item.savedUrl)) {
-                    const charName = item.characterName || 'Unknown';
-                    if (!summary[charName]) {
-                        summary[charName] = { count: 0, totalSize: 0, slots: {}, latestTimestamp: 0 };
-                    }
-
-                    const slotId = item.slotId || item.imgId;
-                    if (!summary[charName].slots[slotId]) {
-                        summary[charName].slots[slotId] = { count: 0, hasSaved: false, latestTimestamp: 0, latestImgId: null };
-                    }
-
-                    const slot = summary[charName].slots[slotId];
-                    slot.count++;
-                    if (item.savedUrl) slot.hasSaved = true;
-                    if (item.timestamp > slot.latestTimestamp) {
-                        slot.latestTimestamp = item.timestamp;
-                        slot.latestImgId = item.imgId;
-                    }
-
-                    summary[charName].count++;
-                    summary[charName].totalSize += (item.base64?.length || 0) * 0.75;
-                    if (item.timestamp > summary[charName].latestTimestamp) {
-                        summary[charName].latestTimestamp = item.timestamp;
-                    }
-                }
-                cursor.continue();
-            };
-            tx.onerror = () => resolve({});
+            const store = database.transaction(DB_STORE, 'readonly').objectStore(DB_STORE);
+            const out = [];
+            let pending = ids.length;
+            ids.forEach((imgId) => {
+                const request = store.get(imgId);
+                const done = () => { if (--pending === 0) resolve(out); };
+                request.onsuccess = () => {
+                    const r = request.result;
+                    if (r) out.push({ imgId, base64: r.base64 || null, savedUrl: r.savedUrl || null });
+                    done();
+                };
+                request.onerror = done;
+            });
         } catch {
-            resolve({});
+            resolve([]);
         }
     });
 }

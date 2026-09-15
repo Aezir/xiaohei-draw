@@ -177,6 +177,11 @@ https://github.com/Aezir/xiaohei-draw
   - 场景 Agent：默认过滤规则搬到新文件 `shared/message-filter-rules.js`（`novel-draw.html` 的副本有测试守着必须一致），新增 `<StatusPlaceHolderImpl/>`、```` ```html ```` 代码块、`<!DOCTYPE html`/`<html` 整页。过滤规则「起止填同一个记号」现在表示只删这个记号（以前会当成成对块）。整行只有 `<story>` 这类标签不再算正文，开头标签后、结尾标签后不再冒插图点。设置版本 9→10：已存过自定义过滤规则的老存档一次性把新规则补到末尾。
   - 测试：新增 `scene-source-mvu`（12，含 CRLF + `<story>` + 尾部占位符的开场白形状）、`message-rerender`（7）、`mvu-settle`（6）；`tests/novelai` + `tests/gallery` 244 条、插件 33 条全过。未在真实酒馆里实测。
 - 2026-09-14 修悬浮球闲置变淡导致整页卡死：`float-idle-dim.js` 的 MutationObserver 回调里「忙」状态每次都 `classList.remove('is-dim')`，Chromium 里类不存在也会产生 class 变更记录（实测），observer → refresh → remove 无限微任务循环，悬停 / 点击悬浮球 / 出图时页面冻结。改成 `setDim(on)`：状态真要变才写 class。测试加浏览器式假 observer（每次写都通知），旧实现会失败、新实现通过；245 条全过。酒馆页实测悬停 → 恢复 → 离开 3 秒变淡，共 2 次变更，页面不卡。
+- 2026-09-15 存入画廊即时反馈 + 图片管理性能：
+  - 「同步到 Gallery」（聊天长按 / 灯箱）点下立刻提示「正在存入画廊…」，存完再报结果（`gallery-actions.js`）。
+  - `gallery-cache.js` 数据库版本 3→4，新增 `preview_meta` 表（imgId、slotId、角色、时间、状态、savedUrl、字节数，不含图片），和图片表在同一事务里写（存图、导入、删除、过期清理、清空）；打开时数量对不上就整表扫一次重建。`getCacheStats` / `getGallerySummary` 只读元数据，不再把所有 base64 读进内存。
+  - 展开角色：宿主新 `getCharacterPreviewMeta` 只回编号和时间；设置页每次渲染 60 组，底部哨兵滚到再追加；缩略图 IntersectionObserver 进屏幕才发 `LOAD_PREVIEW_IMAGES`（每批 ≤8 张，只取最新版），宿主 `getPreviewImages` 回 `PREVIEW_IMAGES_LOADED`；点开大图才取这一组的其他版本。`getCharacterPreviews` 保留给批量存入画廊用。
+  - 验证：263 条测试全过；本地静态页模拟宿主 150 组（300 张）：首屏 60 组、只请求最新版、批量 ≤8、追加到 150 组、大图按需加载都对。预览面板隐藏导致 IntersectionObserver 不触发，「滚进屏幕才加载」走的是无 observer 回退路径验证的；未在真实酒馆里实测。
 
 ## 目录地图（改哪里）
 

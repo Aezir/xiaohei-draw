@@ -1859,6 +1859,14 @@ let state = {
 
 let gallerySummary = {};
 let loadedCharPreviews = {};
+// 图片本体按需取：imgId → { base64, savedUrl }。缩略图滚进屏幕、点开大图时才向宿主要。
+const previewImageData = new Map();
+const previewImagePending = new Set();
+let previewImageQueue = [];
+let previewImageFlushQueued = false;
+const GALLERY_SLOT_PAGE = 60;
+const gallerySlotRender = {};   // charName → { entries, shown }
+let galleryThumbObserver = null;
 let editingCharId = null;
 const saveBtnStates = new WeakMap();
 const promptTextDraftsByPreset = new Map();
@@ -1990,7 +1998,45 @@ function base64ToObjectUrl(base64, mime) {
     return URL.createObjectURL(new Blob(chunks, { type: mime }));
 }
 
+function requestPreviewImages(imgIds) {
+    for (const id of imgIds || []) {
+        const key = String(id || '');
+        if (!key || previewImageData.has(key) || previewImagePending.has(key)) continue;
+        previewImagePending.add(key);
+        previewImageQueue.push(key);
+    }
+    if (previewImageFlushQueued || !previewImageQueue.length) return;
+    previewImageFlushQueued = true;
+    queueMicrotask(() => {
+        previewImageFlushQueued = false;
+        const ids = previewImageQueue;
+        previewImageQueue = [];
+        // 每批 8 张，避免一条消息塞几十 MB
+        for (let i = 0; i < ids.length; i += 8) postToParent({ type: 'LOAD_PREVIEW_IMAGES', imgIds: ids.slice(i, i + 8) });
+    });
+}
+
+function applyLoadedPreviewImages(images) {
+    let modalTouched = false;
+    for (const image of images || []) {
+        if (!image?.imgId) continue;
+        previewImagePending.delete(image.imgId);
+        previewImageData.set(image.imgId, { base64: image.base64 || null, savedUrl: image.savedUrl || null });
+        const url = getGalleryImageUrl({ imgId: image.imgId });
+        document.querySelectorAll(`img.gallery-slot-img[data-img-id="${CSS.escape(image.imgId)}"]`).forEach((img) => {
+            if (url && !img.getAttribute('src')) img.src = url;
+        });
+        if (modalData.images.some(item => item.imgId === image.imgId)) modalTouched = true;
+    }
+    if (modalTouched && $('nd_gallery_modal').classList.contains('visible')) {
+        renderModalThumbs();
+        renderModalContent();
+    }
+}
+
 function getGalleryImageUrl(image = {}) {
+    const loaded = image.imgId ? previewImageData.get(image.imgId) : null;
+    if (loaded && !image.base64 && !image.savedUrl) image = { ...image, ...loaded };
     const savedUrl = String(image.savedUrl || '').trim();
     if (savedUrl) return savedUrl;
     const parsed = parsePreviewBase64(image.base64);
@@ -2876,15 +2922,46 @@ function renderCharacterSlots(charName, slots) {
     }
     
     slotEntries.sort((a, b) => (b[1][0]?.timestamp || 0) - (a[1][0]?.timestamp || 0));
-    
-    slotsContainer.innerHTML = slotEntries.map(([slotId, images]) => {
+    gallerySlotRender[charName] = { entries: slotEntries, shown: 0 };
+    slotsContainer.innerHTML = '';
+    appendCharacterSlots(charName, slotsContainer);
+}
+
+function getGalleryThumbObserver() {
+    if (galleryThumbObserver || typeof IntersectionObserver !== 'function') return galleryThumbObserver;
+    galleryThumbObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const el = entry.target;
+            galleryThumbObserver.unobserve(el);
+            if (el.classList.contains('gallery-slot-more')) {
+                const container = el.parentElement;
+                el.remove();
+                if (container) appendCharacterSlots(el.dataset.char, container);
+            } else if (el.dataset.imgId) {
+                requestPreviewImages([el.dataset.imgId]);
+            }
+        }
+    }, { rootMargin: '300px 0px' });
+    return galleryThumbObserver;
+}
+
+// 每次最多追加 60 组；缩略图不带图片本体，滚进屏幕才去取最新那一版
+function appendCharacterSlots(charName, slotsContainer) {
+    const render = gallerySlotRender[charName];
+    if (!render) return;
+    const chunk = render.entries.slice(render.shown, render.shown + GALLERY_SLOT_PAGE);
+    render.shown += chunk.length;
+    const observer = getGalleryThumbObserver();
+
+    const html = chunk.map(([slotId, images]) => {
         const latest = images[0];
         const hasSaved = images.some(img => img.savedUrl);
         const imgSrc = getGalleryImageUrl(latest);
 
         return `
-        <div class="gallery-slot" data-slot="${slotId}" data-char="${escapeHtml(charName)}">
-            <img class="gallery-slot-img" src="${escapeHtml(imgSrc)}" loading="lazy" decoding="async">
+        <div class="gallery-slot" data-slot="${escapeHtml(slotId)}" data-char="${escapeHtml(charName)}">
+            <img class="gallery-slot-img" data-img-id="${escapeHtml(latest.imgId)}" ${imgSrc ? `src="${escapeHtml(imgSrc)}"` : ''} loading="lazy" decoding="async">
             <div class="gallery-slot-overlay">
                 <div class="gallery-slot-actions">
                     <button class="btn btn-sm" data-action="view" data-slot="${slotId}" data-char="${escapeHtml(charName)}">
@@ -2901,18 +2978,36 @@ function renderCharacterSlots(charName, slots) {
             </div>
         </div>`;
     }).join('');
-    
-    slotsContainer.querySelectorAll('[data-action="view"]').forEach(btn => {
-        btn.addEventListener('click', e => { e.stopPropagation(); openGalleryModalFromCache(btn.dataset.char, btn.dataset.slot); });
-    });
-    slotsContainer.querySelectorAll('.gallery-slot').forEach(slot => {
+
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    const added = Array.from(holder.children);
+    added.forEach((slot) => {
+        slot.querySelector('[data-action="view"]')?.addEventListener('click', e => { e.stopPropagation(); openGalleryModalFromCache(slot.dataset.char, slot.dataset.slot); });
         slot.addEventListener('click', e => { if (!e.target.closest('[data-action]')) openGalleryModalFromCache(slot.dataset.char, slot.dataset.slot); });
+        const img = slot.querySelector('img.gallery-slot-img');
+        if (img && !img.getAttribute('src')) {
+            if (observer) observer.observe(img);
+            else requestPreviewImages([img.dataset.imgId]);
+        }
+        slotsContainer.appendChild(slot);
     });
+
+    if (render.shown < render.entries.length) {
+        const more = document.createElement('div');
+        more.className = 'gallery-loading gallery-slot-more';
+        more.dataset.char = charName;
+        more.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> 还有 ${render.entries.length - render.shown} 组，往下滚继续加载`;
+        slotsContainer.appendChild(more);
+        if (observer) observer.observe(more);
+        else more.addEventListener('click', () => { more.remove(); appendCharacterSlots(charName, slotsContainer); }, { once: true });
+    }
 }
 
 function openGalleryModalFromCache(charName, slotId) {
     const slots = loadedCharPreviews[charName];
     if (!slots || !slots[slotId]) return;
+    requestPreviewImages(slots[slotId].map(img => img.imgId));
     modalData = { slotId, images: slots[slotId], currentIndex: 0, charName };
     renderModalThumbs();
     renderModalContent();
@@ -3576,6 +3671,10 @@ window.addEventListener('message', event => {
             loadedCharPreviews[data.charName] = data.slots;
             renderCharacterSlots(data.charName, data.slots);
             break;
+
+        case 'PREVIEW_IMAGES_LOADED':
+            applyLoadedPreviewImages(data.images);
+            break;
             
         case 'TEST_RESULT':
             $('nd_preview_img').src = data.url;
@@ -3618,6 +3717,7 @@ window.addEventListener('message', event => {
             break;
             
         case 'GALLERY_IMAGE_DELETED':
+            previewImageData.delete(data.imgId);
             if (modalData.charName && loadedCharPreviews[modalData.charName]) {
                 const slots = loadedCharPreviews[modalData.charName];
                 for (const slotId in slots) {
