@@ -333,6 +333,15 @@ textarea.input { min-height: 60px; resize: vertical; line-height: 1.5; }
     font-size: 14px; padding: 2px 5px; border-radius: var(--radius-sm); display: inline-flex;
 }
 .filter-rule-row .btn-del-rule:hover { color: var(--danger); background: var(--danger-soft); }
+.nd-supp-title { display: flex; align-items: center; gap: 6px; overflow: visible; }
+.nd-supp-switch { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 400; color: var(--text-secondary); cursor: pointer; }
+#nd_test_card.is-off textarea { opacity: .55; }
+.nd-help-tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 14px; color: var(--text-muted); cursor: help; outline: none; }
+.nd-help-tip:hover, .nd-help-tip:focus-visible, .nd-help-tip.open { color: var(--accent); background: var(--accent-soft, rgba(232,137,176,.16)); }
+.nd-help-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: max-content; max-width: min(300px, 78vw); padding: 9px 11px; border-radius: 8px; background: var(--bg-active); color: var(--text-primary); font-size: 12px; font-weight: 400; line-height: 1.65; white-space: normal; text-align: left; cursor: default; opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity .12s, transform .12s, visibility .12s; pointer-events: none; }
+.nd-help-tip:hover .nd-help-pop, .nd-help-tip:focus-visible .nd-help-pop, .nd-help-tip.open .nd-help-pop { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
+.filter-rule-row input.ts-enabled { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0 4px 0 2px; cursor: pointer; }
+.filter-rule-row.is-off input.ts-text { color: var(--text-muted); text-decoration: line-through; }
 .char-card { display: block; padding: 2px 6px; border-radius: var(--radius); transition: background 0.12s; }
 .char-card:hover { background: var(--bg-tertiary); }
 .char-card-summary { display: flex; align-items: center; gap: 6px; min-height: 28px; }
@@ -1106,16 +1115,20 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                         </div>
 
                         <div class="card" id="nd_test_card">
-                            <div class="card-title">测试提示词</div>
+                            <div class="card-title nd-supp-title">
+                                <span>增补提示词</span>
+                                <span class="nd-help-tip" tabindex="0" role="button" aria-label="增补提示词说明"><i class="ri-question-line"></i><span class="nd-help-pop" role="tooltip">开着时，这里的内容会加到每一次聊天配图里：Prompt 接在场景 tag 后面，Undesired Content 接在负向固定后面。所有参数预设共用，不随预设切换；留空就不加。Tag 过滤规则不会删这里的词。悬浮球菜单里的「增补」就是这个开关。本页底部「生成」总是用这两个框出一张测试图，不看开关。</span></span>
+                                <label class="nd-supp-switch"><input type="checkbox" id="nd_supp_enabled"> 启用</label>
+                            </div>
                             <div class="nai-box">
-                                <div class="nai-box-head"><label for="nd_test_tags">Prompt</label><span class="nai-head-label">接在正向固定之后</span></div>
+                                <div class="nai-box-head"><label for="nd_test_tags">Prompt</label><span class="nai-head-label">接在场景 tag 之后</span></div>
                                 <textarea id="nd_test_tags" class="input" rows="3"></textarea>
                             </div>
                             <div class="nai-box" style="margin-top:8px;">
-                                <div class="nai-box-head"><label for="nd_test_uc">Undesired Content</label><span class="nai-head-label">可选，接在负向固定之后</span></div>
-                                <textarea id="nd_test_uc" class="input" rows="2" placeholder="留空则只用负向固定"></textarea>
+                                <div class="nai-box-head"><label for="nd_test_uc">Undesired Content</label><span class="nai-head-label">接在负向固定之后</span></div>
+                                <textarea id="nd_test_uc" class="input" rows="2" placeholder="留空则不加"></textarea>
                             </div>
-                            <p class="nai-hint">点底部「生成」出一张测试图：用当前参数预设（改动会自动保存），正向固定 + Prompt，负向固定 + Undesired Content。</p>
+                            <p class="nai-hint">全局一份，改完自动保存。</p>
                         </div>
 
                         <div class="nai-group-title">参考图</div>
@@ -1486,6 +1499,18 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                         </div>
                     </details>
 
+                    <details class="card prompt-advanced-card nd-span-all" open>
+                        <summary class="prompt-card-header">
+                            <div class="card-title"><i class="ri-scissors-cut-line"></i> Tag 过滤规则</div>
+                            <i class="ri-arrow-right-s-line chain-toggle-icon" aria-hidden="true"></i>
+                        </summary>
+                        <p class="form-hint" style="margin-bottom:6px;">场景 Agent 生成的场景和角色 tag 送进 NovelAI 前，把这里写的词原样删掉（不分大小写），多出来的逗号自动清理。一条一个词，勾掉就暂停这条。所有提示词预设共用，改完自动保存。负面提示词、角色库和固定前缀不受影响。</p>
+                        <div id="nd_tag_strip_list"></div>
+                        <div class="btn-group" style="margin-top:6px;">
+                            <button id="nd_tag_strip_add" class="btn btn-sm" type="button"><i class="ri-add-line"></i> 添加</button>
+                        </div>
+                    </details>
+
                     <details id="nd_prompt_chain_details" class="card prompt-advanced-card nd-span-all">
                         <summary class="prompt-card-header">
                             <div class="card-title"><i class="ri-links-line"></i> 请求结构</div>
@@ -1703,6 +1728,21 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
 
                     <div id="nd-gallery-auth-slot" class="nd-span-all"></div>
 
+                    <div class="card nd-span-all" id="nd_export_card">
+                        <div class="card-title"><i class="ri-download-2-line"></i> 导出配置</div>
+                        <p class="form-hint">下载一个 JSON 文件：NAI 连接、参数预设、提示词预设、角色库、世界书、过滤规则、悬浮球设置和场景 Agent 配置。图片缓存、画廊和日志不在里面。</p>
+                        <label class="check-row"><input type="checkbox" id="nd_export_keys"> 包含 API Key（NAI、场景 Agent、Tavily）</label>
+                        <p class="form-hint hidden" id="nd_export_keys_warn">带 Key 的文件等于密码，只自己留着备份，别发给别人。</p>
+                        <div class="action-status-row">
+                            <div class="btn-group">
+                                <button id="nd_export_btn" class="btn" type="button"><i class="ri-download-2-line"></i> 导出</button>
+                                <button id="nd_import_btn" class="btn" type="button"><i class="ri-upload-2-line"></i> 导入</button>
+                                <input type="file" id="nd_import_file" accept="application/json,.json" hidden>
+                            </div>
+                            <div id="nd_export_status" class="status-text"></div>
+                        </div>
+                    </div>
+
                     <!-- 原项目与许可证说明：放在 API 配置最底部 -->
                     <div class="nd-span-all nd-about" id="nd_about">
                         <div class="nd-about-row"><span class="nd-about-key">原项目</span><span>LittleWhiteBox（小白X）by biex — <a href="https://github.com/RT15548/LittleWhiteBox" target="_blank" rel="noopener noreferrer">https://github.com/RT15548/LittleWhiteBox</a></span></div>
@@ -1855,6 +1895,8 @@ let state = {
     modelCapabilities: {},
     backendPluginStatus: null,
     messageFilterRules: [],
+    tagStripRules: [],
+    supplementPrompt: { enabled: false, prompt: '', uc: '' },
 };
 
 let gallerySummary = {};
@@ -1958,6 +2000,8 @@ function savePromptPresetNow() {
 function flushAutosaves() {
     flushParamsSave();
     flushPromptSave();
+    if (tagStripSaveTimer) saveTagStripRulesNow();
+    if (supplementSaveTimer) saveSupplementNow();
 }
 
 // 页内对话框（shared/xb-dialog.js 挂的 window.XBDialog）；没加载到时按「取消」处理，不回退原生对话框
@@ -2264,6 +2308,93 @@ function renderFilterRuleRow(rule, container) {
         `<button class="btn-del-rule" title="删除"><i class="ri-close-line"></i></button>`;
     row.querySelector('.btn-del-rule').onclick = () => row.remove();
     container.appendChild(row);
+}
+
+// ── 增补提示词（原测试提示词）：全局一份 + 开关，停手 500ms 自动保存 ──
+let supplementSaveTimer = null;
+
+function collectSupplementPrompt() {
+    return {
+        enabled: !!$('nd_supp_enabled')?.checked,
+        prompt: ($('nd_test_tags')?.value || '').trim(),
+        uc: ($('nd_test_uc')?.value || '').trim(),
+    };
+}
+
+function renderSupplementPrompt(value) {
+    const card = $('nd_test_card');
+    if (!card) return;
+    const supp = value && typeof value === 'object' ? value : {};
+    card.classList.toggle('is-off', supp.enabled !== true);
+    if (card.contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA') return;   // 正在输入时不回填
+    $('nd_supp_enabled').checked = supp.enabled === true;
+    $('nd_test_tags').value = supp.prompt || '';
+    $('nd_test_uc').value = supp.uc || '';
+    $('nd_test_tags').dispatchEvent(new Event('input'));   // 语法高亮层跟着刷新（不会触发保存：值没变）
+    $('nd_test_uc').dispatchEvent(new Event('input'));
+}
+
+function saveSupplementNow() {
+    clearTimeout(supplementSaveTimer);
+    supplementSaveTimer = null;
+    const next = collectSupplementPrompt();
+    $('nd_test_card')?.classList.toggle('is-off', !next.enabled);
+    if (JSON.stringify(next) === JSON.stringify(state.supplementPrompt || {})) return;
+    state.supplementPrompt = next;
+    postToParent({ type: 'SAVE_SUPPLEMENT_PROMPT', supplementPrompt: next });
+}
+
+function scheduleSupplementSave() {
+    clearTimeout(supplementSaveTimer);
+    supplementSaveTimer = setTimeout(saveSupplementNow, 500);
+}
+
+// ── Tag 过滤规则：一条一词 + 开关，停手 500ms 自动保存 ──
+let tagStripSaveTimer = null;
+
+function renderTagStripRow(rule, container) {
+    const row = document.createElement('div');
+    row.className = 'filter-rule-row tag-strip-row';
+    row.classList.toggle('is-off', rule.enabled === false);
+    row.innerHTML = `<input type="checkbox" class="ts-enabled" title="启用这条" ${rule.enabled === false ? '' : 'checked'}>` +
+        `<input type="text" class="ts-text" placeholder="要删掉的词，如 nsfw" value="${escapeHtml(rule.text || '')}">` +
+        `<button class="btn-del-rule" type="button" title="删除"><i class="ri-close-line"></i></button>`;
+    row.querySelector('.ts-enabled').addEventListener('change', (e) => {
+        row.classList.toggle('is-off', !e.target.checked);
+        saveTagStripRulesNow();
+    });
+    row.querySelector('.ts-text').addEventListener('input', scheduleTagStripSave);
+    row.querySelector('.ts-text').addEventListener('change', saveTagStripRulesNow);
+    row.querySelector('.btn-del-rule').addEventListener('click', () => { row.remove(); saveTagStripRulesNow(); });
+    container.appendChild(row);
+    return row;
+}
+
+function renderTagStripRules(rules) {
+    const list = $('nd_tag_strip_list');
+    if (!list || list.contains(document.activeElement)) return;   // 正在输入时不被回填打断
+    list.innerHTML = '';
+    (Array.isArray(rules) ? rules : []).forEach(rule => renderTagStripRow(rule, list));
+}
+
+function collectTagStripRules() {
+    return Array.from($$('#nd_tag_strip_list .tag-strip-row'))
+        .map(row => ({ text: (row.querySelector('.ts-text')?.value || '').trim(), enabled: !!row.querySelector('.ts-enabled')?.checked }))
+        .filter(rule => rule.text);
+}
+
+function saveTagStripRulesNow() {
+    clearTimeout(tagStripSaveTimer);
+    tagStripSaveTimer = null;
+    const rules = collectTagStripRules();
+    if (JSON.stringify(rules) === JSON.stringify(state.tagStripRules || [])) return;
+    state.tagStripRules = rules;
+    postToParent({ type: 'SAVE_TAG_STRIP_RULES', rules });
+}
+
+function scheduleTagStripSave() {
+    clearTimeout(tagStripSaveTimer);
+    tagStripSaveTimer = setTimeout(saveTagStripRulesNow, 500);
 }
 
 function renderFilterRules(rules) {
@@ -3261,6 +3392,8 @@ function applyStateToUI() {
         $('nd_danbooru_local_sub').classList.toggle('hidden', !state.danbooruLocalDB);
         $('nd_danbooru_local_status').textContent = state.danbooruLocalDB ? '已加载' : '未加载';
         renderFilterRules(state.messageFilterRules);
+        renderTagStripRules(state.tagStripRules);
+        renderSupplementPrompt(state.supplementPrompt);
     } catch (e) {
         console.error('[ND-UI] applyStateToUI 部分失败:', e);
     }
@@ -3703,6 +3836,8 @@ window.addEventListener('message', event => {
                 updateStatus($('nd_params_status'), data.state, data.text);
             } else if (data.target === 'prompt-preset') {
                 updateStatus($('nd_prompt_preset_status'), data.state, data.text);
+            } else if (data.target === 'export') {
+                updateStatus($('nd_export_status'), data.state, data.text);
             } else if (data.target === 'prompts') {
                 updateStatus($('nd_prompts_status'), data.state, data.text);
             } else if (data.target === 'filter') {
@@ -4115,6 +4250,63 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════════════════════════
     // 消息过滤规则
     // ═══════════════════════════════════════════════════════════════════════
+    // 增补提示词
+    $('nd_supp_enabled').addEventListener('change', saveSupplementNow);
+    ['nd_test_tags', 'nd_test_uc'].forEach((id) => {
+        $(id).addEventListener('input', (event) => { if (event.isTrusted) scheduleSupplementSave(); });
+        $(id).addEventListener('change', saveSupplementNow);
+    });
+    // 小问号浮窗：悬停 / 键盘聚焦显示；触屏点一下开关，点别处关
+    document.querySelectorAll('.nd-help-tip').forEach((tip) => {
+        tip.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); tip.classList.toggle('open'); });
+        tip.addEventListener('keydown', (event) => { if (event.key === 'Escape') tip.classList.remove('open'); });
+    });
+    document.addEventListener('click', () => document.querySelectorAll('.nd-help-tip.open').forEach(tip => tip.classList.remove('open')));
+
+    // 导入配置：选文件 → 本地检查 → 确认 → 宿主先下载备份再整份覆盖
+    $('nd_import_btn').addEventListener('click', () => $('nd_import_file').click());
+    $('nd_import_file').addEventListener('change', async () => {
+        const input = $('nd_import_file');
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file) return;
+        let payload;
+        try {
+            payload = JSON.parse(await file.text());
+        } catch {
+            updateStatus($('nd_export_status'), 'error', '导入失败：文件不是有效的 JSON');
+            return;
+        }
+        if (!payload || payload.app !== 'xiaohei-draw' || payload.kind !== 'global-settings') {
+            updateStatus($('nd_export_status'), 'error', '导入失败：这不是小黑生图导出的配置文件');
+            return;
+        }
+        const parts = [
+            payload.novelDraw && 'NAI 连接、参数预设、提示词预设、悬浮球等插件设置',
+            payload.sharedDraw && '角色库、世界书、过滤规则',
+            payload.sceneAgent && '场景 Agent 配置',
+        ].filter(Boolean);
+        const when = payload.exportedAt ? new Date(payload.exportedAt).toLocaleString() : '未知时间';
+        const keyNote = payload.includesKeys ? '文件带 API Key，会替换你现在的 Key。' : '文件不带 API Key：导入后你现在填的 Key 会被清空，需要重新填。';
+        const ok = await ndDialog.confirm(`「${file.name}」（导出于 ${when}）\n\n将整份覆盖：${parts.join('；') || '（没有可导入的内容）'}。\n${keyNote}\n\n覆盖前会先自动下载一份当前配置（带 Key）当备份。`, { danger: true, okLabel: '备份并导入' });
+        if (!ok) return;
+        flushAutosaves();
+        updateStatus($('nd_export_status'), 'loading', '正在备份并导入…');
+        postToParent({ type: 'IMPORT_SETTINGS', payload });
+    });
+
+    $('nd_export_keys').addEventListener('change', () => {
+        $('nd_export_keys_warn').classList.toggle('hidden', !$('nd_export_keys').checked);
+    });
+    $('nd_export_btn').addEventListener('click', () => {
+        flushAutosaves();
+        updateStatus($('nd_export_status'), 'loading', '正在导出…');
+        postToParent({ type: 'EXPORT_SETTINGS', includeKeys: $('nd_export_keys').checked });
+    });
+    $('nd_tag_strip_add').addEventListener('click', () => {
+        const row = renderTagStripRow({ text: '', enabled: true }, $('nd_tag_strip_list'));
+        row.querySelector('.ts-text')?.focus();
+    });
     $('nd_filter_add').addEventListener('click', () => {
         renderFilterRuleRow({ start: '', end: '' }, $('nd_filter_rules_list'));
     });

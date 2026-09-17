@@ -1,4 +1,6 @@
 // 共享画图设置与 NovelAI Provider 设置共用现行 settings 根对象；此模块只拥有通用字段。
+import { normalizeTagStripRules } from './tag-strip.js';
+
 const SERVER_FILE_KEY = 'settings';
 export const DEFAULT_SHARED_GALLERY_CACHE_DAYS = 3;
 
@@ -9,6 +11,7 @@ const DEFAULT_SHARED_DRAW_SETTINGS = {
     characterTags: [],
     danbooruLocalDB: false,
     messageFilterRules: [],
+    tagStripRules: [],
     worldbooks: { enabled: false, uploadedBooks: [], keywordFilterMode: 'auto' },
     updatedAt: 0,
 };
@@ -34,6 +37,7 @@ const NOVEL_DRAW_PROVIDER_SETTING_KEYS = new Set([
     'promptPresets',
     'selectedPromptPresetId',
     '_promptTemplateVersion',
+    'supplementPrompt',
 ]);
 
 let settingsCache = null;
@@ -104,6 +108,7 @@ export function normalizeSharedDrawSettings(saved = {}) {
         characterTags,
         danbooruLocalDB: source.danbooruLocalDB === true,
         messageFilterRules,
+        tagStripRules: normalizeTagStripRules(source.tagStripRules),
         worldbooks: {
             enabled: rawWorldbooks.enabled === true,
             uploadedBooks: Array.isArray(rawWorldbooks.uploadedBooks) ? rawWorldbooks.uploadedBooks : [],

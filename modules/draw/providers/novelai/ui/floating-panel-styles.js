@@ -168,6 +168,10 @@ export const FLOATING_PANEL_CSS = `
     transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
 }
 .nd-float.show-detail .nd-detail { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
+.nd-switch.nd-field-control { position: relative; flex: 0 0 auto; width: 36px; height: 20px; margin: 0 2px 0 auto; padding: 0; border: 0; outline: 0; border-radius: 10px; background: var(--nd-bg-input); cursor: pointer; transition: background 0.15s; -webkit-tap-highlight-color: transparent; }
+.nd-switch.nd-field-control[aria-checked="true"] { background: #e889b0; }
+.nd-switch .nd-switch-knob { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #d8d8d8; transition: transform 0.15s, background 0.15s; pointer-events: none; }
+.nd-switch.nd-field-control[aria-checked="true"] .nd-switch-knob { transform: translateX(16px); background: #fff; }
 .nd-detail-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .nd-detail-row + .nd-detail-row { margin-top: 2px; }
 .nd-detail-icon { font-size: 14px; line-height: 1; color: var(--nd-text-muted); }

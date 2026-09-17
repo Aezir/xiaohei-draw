@@ -38,10 +38,11 @@ export const FLOAT_FIELD_DEFS = Object.freeze([
     { id: 'steps', label: '步数', kind: 'number', min: 1, max: 50, step: 1 },
     { id: 'scale', label: '引导', kind: 'number', min: 0, max: 10, step: 0.1 },
     { id: 'seed', label: '种子', kind: 'number', min: -1, max: 4294967295, step: 1 },
+    { id: 'supplement', label: '增补', kind: 'toggle' },   // 增补提示词开关（全局，不跟预设）
 ]);
 
 export const FLOAT_FIELD_IDS = Object.freeze(FLOAT_FIELD_DEFS.map(def => def.id));
-export const DEFAULT_FLOAT_FIELDS = Object.freeze(['preset', 'size']);
+export const DEFAULT_FLOAT_FIELDS = Object.freeze(['preset', 'size', 'supplement']);
 
 const DEF_BY_ID = new Map(FLOAT_FIELD_DEFS.map(def => [def.id, def]));
 
@@ -65,6 +66,7 @@ export function getActiveParamsPresetFrom(settings) {
 export function readFloatFieldValue(id, settings) {
     if (id === 'preset') return String(settings?.selectedParamsPresetId ?? getActiveParamsPresetFrom(settings)?.id ?? '');
     if (id === 'size') return String(settings?.overrideSize || 'default');
+    if (id === 'supplement') return settings?.supplementPrompt?.enabled === true ? 'true' : 'false';
     const value = getActiveParamsPresetFrom(settings)?.params?.[id];
     return value == null ? '' : value;
 }
@@ -103,6 +105,8 @@ export function coerceFloatFieldValue(id, raw, settings) {
         }
         case 'size':
             return FLOAT_SIZE_OPTIONS.some(opt => opt.value === text) ? { ok: true, value: text } : { ok: false };
+        case 'supplement':
+            return { ok: true, value: raw === true || text === 'true' };
         case 'model':
         case 'sampler':
             return text ? { ok: true, value: text } : { ok: false };
@@ -137,6 +141,11 @@ export function applyFloatFieldValue(settings, id, raw) {
         settings.overrideSize = result.value;
         return true;
     }
+    if (id === 'supplement') {
+        const current = settings.supplementPrompt && typeof settings.supplementPrompt === 'object' ? settings.supplementPrompt : {};
+        settings.supplementPrompt = { enabled: result.value, prompt: String(current.prompt || ''), uc: String(current.uc || '') };
+        return true;
+    }
     const preset = getActiveParamsPresetFrom(settings);
     if (!preset) return false;
     preset.params = preset.params && typeof preset.params === 'object' ? preset.params : {};
@@ -161,6 +170,14 @@ export function buildFloatFieldRows(doc, fieldIds, settings) {
         if (def.kind === 'select') {
             control = doc.createElement('select');
             control.className = `nd-select nd-field-control${id === 'size' ? ' size' : ''}`;
+        } else if (def.kind === 'toggle') {
+            // 自绘开关：酒馆全局样式会把原生 checkbox 画成看不出勾选的白方块
+            control = doc.createElement('button');
+            control.type = 'button';
+            control.className = 'nd-switch nd-field-control';
+            control.setAttribute('role', 'switch');
+            control.setAttribute('aria-checked', 'false');
+            control.appendChild(doc.createElement('span')).className = 'nd-switch-knob';
         } else {
             control = doc.createElement('input');
             control.type = 'number';
@@ -186,7 +203,9 @@ export function syncFloatFieldControls(root, settings) {
         const control = row.querySelector('.nd-field-control');
         if (!control) return;
         const value = String(readFloatFieldValue(id, settings));
-        if (control.tagName === 'SELECT') {
+        if (control.classList?.contains('nd-switch')) {
+            control.setAttribute('aria-checked', value === 'true' ? 'true' : 'false');
+        } else if (control.tagName === 'SELECT') {
             const choices = getFloatFieldChoices(id, settings);
             const signature = JSON.stringify(choices);
             if (control.dataset.choices !== signature) {
@@ -210,9 +229,22 @@ export function bindFloatFieldControls(root, onChange) {
     const handler = (event) => {
         const control = event.target?.closest?.('.nd-field-control');
         const row = control?.closest('[data-float-field]');
-        if (!row || !root.contains(row)) return;
+        if (!row || !root.contains(row) || control.classList?.contains('nd-switch')) return;
         onChange?.(row.dataset.floatField, control.value, control);
     };
+    // 开关是按钮：点一下先翻转外观（乐观更新），再交给 onChange 保存；保存后 sync 会按真实值回写
+    const switchHandler = (event) => {
+        const control = event.target?.closest?.('.nd-switch.nd-field-control');
+        const row = control?.closest('[data-float-field]');
+        if (!row || !root.contains(row)) return;
+        const next = control.getAttribute('aria-checked') !== 'true';
+        control.setAttribute('aria-checked', next ? 'true' : 'false');
+        onChange?.(row.dataset.floatField, next, control);
+    };
     root.addEventListener('change', handler);
-    return () => root.removeEventListener('change', handler);
+    root.addEventListener('click', switchHandler);
+    return () => {
+        root.removeEventListener('change', handler);
+        root.removeEventListener('click', switchHandler);
+    };
 }

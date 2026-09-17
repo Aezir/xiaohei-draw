@@ -3,6 +3,8 @@ import { getNovelModelCapability, isNovelV5Model, NOVEL_VIBE_MAX, supportsNovelV
 import { resolveNovelAIBackendImageApi, resolveNovelAIImageApi } from './novel-request-config.js';
 import { buildNovelV5RequestBody } from './novel-v5-request.js';
 import { parseOverrideSize } from './novel-effective-size.js';
+import { stripTaskTags } from '../../shared/tag-strip.js';
+import { applySupplementPrompt } from '../../shared/supplement-prompt.js';
 
 const MAX_SEED = 0xFFFFFFFF;
 
@@ -199,9 +201,15 @@ export function compileNovelPromptForTask(task, recipe = {}) {
         ? task.characterPrompts.filter(Boolean)
         : assembleCharacterPrompts(task?.chars || [], recipe.knownCharacters || [], { acceptGrid: false })
             .map(({ prompt, uc, center }) => ({ prompt, uc, center }));
+    // 增补提示词（全局开关）：正向接在场景 tag 之后，负向接在负向固定之后
+    const { scene, negativePrompt } = applySupplementPrompt(
+        joinTags(recipe.positivePrefix, task?.scene),
+        String(recipe.negativePrefix || ''),
+        recipe.supplementPrompt,
+    );
     return {
-        scene: joinTags(recipe.positivePrefix, task?.scene),
-        negativePrompt: String(recipe.negativePrefix || ''),
+        scene,
+        negativePrompt,
         characterPrompts,
     };
 }
@@ -236,8 +244,10 @@ export function compileNovelImageRequest(request, generationRecipe, seed) {
 
 export function compile(scenePlan, generationRecipe) {
     const recipe = requireObject(generationRecipe, 'NovelAI generationRecipe');
-    const tasks = Array.isArray(scenePlan) ? scenePlan : scenePlan?.tasks;
-    if (!Array.isArray(tasks) || tasks.length === 0) throw new TypeError('NovelAI scenePlan 必须包含图片任务');
+    const rawTasks = Array.isArray(scenePlan) ? scenePlan : scenePlan?.tasks;
+    if (!Array.isArray(rawTasks) || rawTasks.length === 0) throw new TypeError('NovelAI scenePlan 必须包含图片任务');
+    // Tag 过滤规则在这里统一剥：请求、存下的 tags、之后编辑重生成用的都是剥过的
+    const tasks = rawTasks.map(task => stripTaskTags(task, recipe.tagStripRules));
     if (!Array.isArray(recipe.seeds) || recipe.seeds.length < tasks.length) {
         throw new TypeError('NovelAI generationRecipe.seeds 不足以覆盖全部图片任务');
     }

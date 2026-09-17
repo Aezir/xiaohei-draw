@@ -63,6 +63,7 @@ const FIELD_SAVED_TEXT = {
     steps: '步数已更新',
     scale: '引导已更新',
     seed: '种子已更新',
+    supplement: '增补提示词开关已切换',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1109,7 +1110,7 @@ function destroyFloatingButton() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** 按当前设置刷新所有菜单控件的取值（预设切换、参数保存后调用）。 */
-function refreshAllFieldControls() {
+export function refreshAllFieldControls() {
     const settings = getSettings();
     panelMap.forEach((data) => {
         syncFloatFieldControls(data.$cache?.fieldRows, settings);

@@ -37,6 +37,10 @@ import {
 import { getLastDrawAgentDiagnostic } from '../../shared/draw-agent.js';
 import { beginDrawLog, clearDrawLogs, listDrawLogs, setDrawLogMvuBusyProbe, subscribeDrawLogs } from '../../shared/draw-log-store.js';
 import { attachDrawAgentSettingsSurface } from '../../shared/agent-settings-surface.js';
+import { loadSharedAgentSettings, saveSharedAgentSettings } from '../../../agent-core/settings-repository.js';
+import { buildSettingsExport, settingsExportFileName, validateSettingsImport } from '../../shared/settings-export.js';
+import { applySupplementPrompt, normalizeSupplementPrompt } from '../../shared/supplement-prompt.js';
+import { normalizeSharedDrawSettings } from '../../shared/draw-settings.js';
 import { createSerialImageRequestQueue } from '../../shared/serial-image-request-queue.js';
 import { isCharacterEnabled } from '../../shared/character-selection.js';
 import {
@@ -184,7 +188,9 @@ const NAI_BACKEND_V5_MIN_VERSION = NAI_BACKEND_MIN_VERSION;
 const NAI_BACKEND_STATUS_TIMEOUT = 5000;
 const NAI_BACKEND_STATUS_ATTEMPTS = 2;
 const NAI_BACKEND_STATUS_RETRY_DELAY_MS = 1000;
-const CONFIG_VERSION = 10;
+const CONFIG_VERSION = 11;
+// v11：悬浮球菜单新增「增补」开关；自定义过菜单项的老存档一次性补上。
+const SUPPLEMENT_FLOAT_FIELD_MIGRATION_CONFIG_VERSION = 11;
 // v9：请求间隔默认值从 15–30 秒改成 150–300 毫秒；旧存档一次性改到新默认值，之后尊重用户手改。
 const REQUEST_DELAY_RESET_CONFIG_VERSION = 9;
 // v10：默认过滤规则新增 MVU 状态栏占位符 / HTML 代码块 / 整页 HTML；已保存自定义规则的老存档一次性补到末尾。
@@ -366,7 +372,8 @@ const DEFAULT_SETTINGS = {
     overrideSize: 'default',
     showFloorButton: true,
     showFloatingButton: false,
-    floatFields: ['preset', 'size'],
+    floatFields: ['preset', 'size', 'supplement'],
+    supplementPrompt: { enabled: false, prompt: '', uc: '' },
     subTier: 'auto',
     advancedMode: true,
     promptPresets: [],
@@ -794,6 +801,7 @@ function normalizeSettings(saved = {}) {
         showFloorButton: source.showFloorButton !== false,
         showFloatingButton: source.showFloatingButton === true,
         floatFields: normalizeFloatFields(source.floatFields),
+        supplementPrompt: normalizeSupplementPrompt(source.supplementPrompt),
         subTier: normalizeSubTier(source.subTier),
         advancedMode: true,
         promptPresets: Array.isArray(source.promptPresets)
@@ -888,6 +896,10 @@ async function loadSettings() {
             && (Number(saved.configVersion) || 0) < REQUEST_DELAY_RESET_CONFIG_VERSION) {
             settingsCache.requestDelay = { ...DEFAULT_SETTINGS.requestDelay };
         }
+        if (saved && Array.isArray(saved.floatFields) && !saved.floatFields.includes('supplement')
+            && (Number(saved.configVersion) || 0) < SUPPLEMENT_FLOAT_FIELD_MIGRATION_CONFIG_VERSION) {
+            settingsCache.floatFields = normalizeFloatFields([...saved.floatFields, 'supplement']);
+        }
         // 一次性迁移：v10 之前存过自定义过滤规则的，补上新增默认规则（共享字段在同一存储根对象里）。
         let savedRoot = saved;
         let migratedFilterRules = null;
@@ -961,6 +973,7 @@ function getRuntimeSettings() {
         worldbooks: sharedSettings.worldbooks,
         danbooruLocalDB: sharedSettings.danbooruLocalDB,
         messageFilterRules: sharedSettings.messageFilterRules,
+        tagStripRules: sharedSettings.tagStripRules || [],
     };
 }
 
@@ -1628,6 +1641,10 @@ export function createNovelGenerationRecipe({
             : 'new_only',
         // 已编码的氛围 token（ensureGenerationVibes 的结果）；compiler 只在 V4/V4.5 写入请求
         vibes: Array.isArray(vibes) ? vibes : [],
+        // 全局 Tag 过滤规则：compile() 剥 LLM 生成的场景 / 角色 tag
+        tagStripRules: cloneSettingsObject(getSharedDrawSettings().tagStripRules || []),
+        // 全局增补提示词：compile() 按开关接到场景 / 负面后面
+        supplementPrompt: normalizeSupplementPrompt(settings.supplementPrompt),
         seeds: Array.from(
             { length: Math.max(0, Math.floor(Number(itemCount) || 0)) },
             () => createNovelRequestSeed(params),
@@ -2251,7 +2268,9 @@ async function refreshSingleImage(container) {
             }));
         }
 
-        const scene = joinTags(preset.positivePrefix, tags);
+        const supplemented = applySupplementPrompt(joinTags(preset.positivePrefix, tags), negativePrompt, getSettings().supplementPrompt);
+        const scene = supplemented.scene;
+        negativePrompt = supplemented.negativePrompt;
 
         const { base64, snapshot: generationParams } = await generateNovelImageDetailed({
             scene,
@@ -2336,8 +2355,11 @@ async function retryFailedImage(container) {
         job = createGenerationJob(`slot:${slotId}`);
         const preset = getActiveParamsPreset();
         const settings = getRuntimeSettings();
-        const scene = tags ? joinTags(preset.positivePrefix, tags) : preset.positivePrefix;
-        const negativePrompt = preset.negativePrefix || '';
+        const { scene, negativePrompt } = applySupplementPrompt(
+            tags ? joinTags(preset.positivePrefix, tags) : preset.positivePrefix,
+            preset.negativePrefix || '',
+            getSettings().supplementPrompt,
+        );
 
         let characterPrompts = null;
         const failedPreviews = await getPreviewsBySlot(slotId);
@@ -3677,6 +3699,7 @@ async function sendInitData() {
             showFloatingButton: settings.showFloatingButton === true,
             floatFields: normalizeFloatFields(settings.floatFields),
             floatFieldOptions: getFloatFieldOptions(),
+            supplementPrompt: normalizeSupplementPrompt(settings.supplementPrompt),
             subTier: normalizeSubTier(settings.subTier),
             advancedMode: !!settings.advancedMode,
             promptPresets: settings.promptPresets || [],
@@ -3688,6 +3711,7 @@ async function sendInitData() {
             modelCapabilities: getNovelModelCapabilitiesForUi(),
             worldbooks: settings.worldbooks || DEFAULT_SETTINGS.worldbooks,
             messageFilterRules: settings.messageFilterRules || [],
+            tagStripRules: getSharedDrawSettings().tagStripRules || [],
         },
         defaultPrompts: { ...DEFAULT_PROMPT_CONFIG },
         cacheStats: stats,
@@ -3886,6 +3910,63 @@ function ensureGalleryLightboxAction() {
     } catch (e) {
         console.warn('[NovelDraw] 注册灯箱「存入画廊」失败:', e);
     }
+}
+
+/** 生成并下载全局配置文件。返回 { name, hasAgent }。label 用于「导入前备份」这类文件名标签。 */
+async function downloadSettingsExport(includeKeys, label = '') {
+    let sceneAgent = null;
+    try {
+        sceneAgent = await loadSharedAgentSettings();
+    } catch (error) {
+        console.warn('[NovelDraw] 导出时读取场景 Agent 配置失败:', error);
+    }
+    const now = new Date();
+    const payload = buildSettingsExport({
+        provider: getSettings(),
+        shared: getSharedDrawSettings(),
+        sceneAgent,
+        includeKeys,
+        now,
+    });
+    const name = settingsExportFileName(now, includeKeys, label);
+    const href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = name;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 4000);
+    return { name, hasAgent: !!sceneAgent };
+}
+
+/** 导入：先下载一份当前配置（带 Key）当备份，再把文件里有的每一块整份覆盖（Key 也按文件，空就是空）。 */
+async function importSettingsPayload(payload) {
+    const check = validateSettingsImport(payload);
+    if (!check.ok) throw new Error(check.error);
+    await downloadSettingsExport(true, '导入前备份');
+    const failed = [];
+    if (check.sections.includes('novelDraw')) {
+        const ok = await persistSettingsNow(cloneSettingsObject(payload.novelDraw), '已导入', { notify: false, silent: true });
+        if (!ok) failed.push('插件设置');
+    }
+    if (check.sections.includes('sharedDraw')) {
+        const replacement = normalizeSharedDrawSettings(payload.sharedDraw);
+        const ok = await updateSharedDrawSettingsPersistent((draft) => {
+            Object.keys(draft).forEach((key) => { delete draft[key]; });
+            Object.assign(draft, replacement);
+        }, '已导入', { notify: false, silent: true });
+        if (!ok) failed.push('共享画图设置');
+    }
+    if (check.sections.includes('sceneAgent')) {
+        const result = await saveSharedAgentSettings(cloneSettingsObject(payload.sceneAgent));
+        if (!result?.ok) failed.push('场景 Agent 配置');
+    }
+    try { await agentSettingsSurface?.refresh?.({ force: true }); } catch { /* 面板没打开 */ }
+    await notifySettingsUpdated();
+    return { sections: check.sections, failed };
 }
 
 async function runGalleryBatchExport(data = {}) {
@@ -4534,6 +4615,54 @@ async function handleFrameMessage(event) {
             await updateSharedSettingsPersistent((settings) => {
                 settings.messageFilterRules = Array.isArray(data.rules) ? data.rules : [];
             }, '过滤规则已保存', { target: 'filter' });
+            break;
+        }
+
+        // Tag 过滤规则：设置页即写即存，全局一份，不跟提示词预设走
+        case 'SAVE_TAG_STRIP_RULES': {
+            const ok = await updateSharedSettingsPersistent((settings) => {
+                settings.tagStripRules = Array.isArray(data.rules) ? data.rules : [];
+            }, '已自动保存', { notify: false, silent: true });
+            if (!ok) postStatus('error', 'Tag 过滤规则保存失败', 'prompts');
+            break;
+        }
+
+        // API 配置底部「导出」：插件设置 + 共享画图设置 + 场景 Agent 配置；默认清空 Key，勾选才带
+        case 'EXPORT_SETTINGS': {
+            try {
+                const { name, hasAgent } = await downloadSettingsExport(data.includeKeys === true);
+                postStatus('success', `已导出 ${name}${hasAgent ? '' : '（场景 Agent 配置没读到，未包含）'}`, 'export');
+            } catch (error) {
+                console.error('[NovelDraw] 导出配置失败:', error);
+                postStatus('error', `导出失败：${error?.message || error}`, 'export');
+            }
+            break;
+        }
+
+        case 'IMPORT_SETTINGS': {
+            try {
+                postStatus('loading', '已下载导入前备份，正在导入…', 'export');
+                const { failed } = await importSettingsPayload(data.payload);
+                if (failed.length) postStatus('error', `部分导入失败：${failed.join('、')}（导入前备份已下载）`, 'export');
+                else postStatus('success', '导入完成，设置已刷新（导入前备份已下载）', 'export');
+            } catch (error) {
+                console.error('[NovelDraw] 导入配置失败:', error);
+                postStatus('error', `导入失败：${error?.message || error}`, 'export');
+            }
+            break;
+        }
+
+        // 增补提示词（全局）：设置页即写即存；悬浮球的「增补」开关跟着刷新
+        case 'SAVE_SUPPLEMENT_PROMPT': {
+            const next = normalizeSupplementPrompt(data.supplementPrompt);
+            const ok = await updateSettingsPersistent((settings) => {
+                settings.supplementPrompt = next;
+            }, '已自动保存', { notify: false, silent: true });
+            if (!ok) postStatus('error', '增补提示词保存失败', 'params');
+            try {
+                const fp = await import('./floating-panel.js');
+                fp.refreshAllFieldControls?.();
+            } catch { /* 悬浮球没加载 */ }
             break;
         }
 

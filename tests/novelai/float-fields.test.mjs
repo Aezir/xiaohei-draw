@@ -24,11 +24,11 @@ function makeSettings() {
     };
 }
 
-test('floatFields 缺省时是今天就有的「预设 + 尺寸」', () => {
-    assert.deepEqual(DEFAULT_FLOAT_FIELDS, ['preset', 'size']);
-    assert.deepEqual(normalizeFloatFields(undefined), ['preset', 'size']);
-    assert.deepEqual(normalizeFloatFields(null), ['preset', 'size']);
-    assert.deepEqual(normalizeFloatFields('preset'), ['preset', 'size']);
+test('floatFields 缺省时是「预设 + 尺寸 + 增补开关」', () => {
+    assert.deepEqual(DEFAULT_FLOAT_FIELDS, ['preset', 'size', 'supplement']);
+    assert.deepEqual(normalizeFloatFields(undefined), ['preset', 'size', 'supplement']);
+    assert.deepEqual(normalizeFloatFields(null), ['preset', 'size', 'supplement']);
+    assert.deepEqual(normalizeFloatFields('preset'), ['preset', 'size', 'supplement']);
 });
 
 test('floatFields 只留已知字段、去重、按注册表顺序，允许全部取消', () => {
