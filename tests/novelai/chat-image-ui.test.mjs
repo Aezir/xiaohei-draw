@@ -107,6 +107,20 @@ test('第二击离得太远：两次单击', () => {
     assert.deepEqual(types(), ['tap', 'tap']);
 });
 
+test('关掉双击识别（聊天图片卡）：抬起立即触发单击，两次快击是两次单击', () => {
+    const clock = fakeClock();
+    const events = [];
+    const r = createGestureRecognizer({ onTap: () => events.push('tap'), onDoubleTap: () => events.push('double') },
+        { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, doubleTap: false });
+    r.down(100, 100, 0);
+    assert.equal(r.up(100, 100, 60), 'tap');
+    assert.deepEqual(events, ['tap']);
+    assert.equal(r.hasPendingTap, false);
+    r.down(104, 100, 150); r.up(104, 100, 200);
+    clock.advance(600);
+    assert.deepEqual(events, ['tap', 'tap']);
+});
+
 test('按住 550ms 不动算长按，抬起不再单击；小抖动不打断', () => {
     const { r, clock, types } = setup();
     r.down(50, 50, 0);
@@ -197,6 +211,21 @@ test('真实图片卡没有内边距和底色；占位卡用中性半透明底�
     assert.equal(/border(-left)?:\s*\d|box-shadow:\s*[^n]/.test(css.replace(/border-style: none !important|box-shadow: none !important/g, '')), false);
 });
 
+test('真实图片卡的编辑窗口是浮在图片正中的弹框，图片压暗；失败卡仍是卡内展开', () => {
+    const css = CHAT_IMAGE_CSS_FOR_TEST();
+    const rule = sel => (css.match(new RegExp(`(^|\\n)${sel.replace(/[.[\]"=()]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[2] || '';
+    const modal = rule('.xb-nd-img[data-img-id].editing .xb-nd-edit');
+    assert.match(modal, /position: absolute;/);
+    assert.match(modal, /left: 50%; top: 50%;/);
+    assert.match(modal, /translate\(-50%, -50%\)/);
+    assert.match(modal, /max-height: calc\(100% - 16px\)/);
+    assert.match(rule('.xb-nd-img[data-img-id].editing .xb-nd-img-wrap img'), /brightness\(0\.4\)/);
+    assert.match(rule('.xb-nd-img[data-img-id].editing .xb-nd-edit-scroll'), /max-height: none/);
+    // 没有 data-img-id 的失败卡不受影响：通用规则还是卡内展开
+    assert.match(rule('.xb-nd-edit'), /margin-top: 6px;/);
+    assert.equal(/\.xb-nd-img\.editing \.xb-nd-edit \{/.test(css), false);
+});
+
 test('失败占位卡保留三个按钮（Remix 图标），等待卡没有 emoji', () => {
     const failed = buildFailedPlaceholderHtml({ slotId: 's', messageId: 1, tags: 't', positive: 'p', errorType: '网络', errorMessage: '超时' });
     for (const action of ['retry-image', 'edit-tags', 'remove-placeholder', 'save-tags-retry', 'cancel-edit']) {
@@ -240,6 +269,12 @@ test('灯箱操作注册表：内置只有「下载」+ 扩展项，按 when 过
 test('共享操作注册表：聊天长按面板只有「下载」+ 两处都注册的项；只进灯箱的项不进聊天', () => {
     const chatCtx = { surface: 'chat', preview: { base64: 'AAA' }, download() {} };
     assert.deepEqual(listImageActions(chatCtx, 'chat').map(a => [a.id, a.label]), [['download-original', '下载']]);
+    // 编辑提示词：ctx 给了 edit 才出现、排在最前，只在聊天卡；正在编辑的卡不再显示
+    const editCtx = { ...chatCtx, edit() {}, card: { classList: { contains: () => false } } };
+    assert.deepEqual(listImageActions(editCtx, 'chat').map(a => [a.id, a.label]), [['edit-prompt', '编辑提示词'], ['download-original', '下载']]);
+    assert.equal(listImageActions({ ...editCtx, card: { classList: { contains: c => c === 'editing' } } }, 'chat').some(a => a.id === 'edit-prompt'), false);
+    assert.equal(listImageActions(null, 'lightbox').some(a => a.id === 'edit-prompt'), false);
+    assert.equal(listImageActions(null, 'chat').find(a => a.id === 'edit-prompt').icon, 'ri-edit-line');
     const off = registerLightboxAction({ id: 'both-test', label: '同步到 Gallery', icon: 'ri-image-add-line', order: 30, surfaces: ['chat', 'lightbox'], when: ctx => !!ctx.preview, run() {} });
     const offImg = registerImageAction({ id: 'lb-only', label: 'x', surfaces: ['lightbox'], run() {} });
     assert.deepEqual(listImageActions(chatCtx, 'chat').map(a => a.label), ['下载', '同步到 Gallery']);

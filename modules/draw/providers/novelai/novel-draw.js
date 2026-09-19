@@ -150,8 +150,9 @@ import { saveAndRegenerate } from './novel-edit-regenerate.js';
 import { XB_ACCENT_RGB, XB_ON_ACCENT } from '../../shared/xb-theme.js';
 import { createCredentialStore } from '../../shared/gallery-sync/credential-store.js';
 import { createLocalGallery } from '../../shared/gallery-sync/local-store.js';
-import { registerGalleryLightboxAction, createTargetResolver } from '../../shared/gallery-sync/gallery-actions.js';
+import { registerGalleryLightboxAction, createTargetResolver, describeSaveResult, READD_PROMPT } from '../../shared/gallery-sync/gallery-actions.js';
 import { exportChatImagesBatch, describeBatchResult } from '../../shared/gallery-sync/batch-export.js';
+import { exportChatImage } from '../../shared/gallery-sync/chat-image-export.js';
 import { applyGalleryPresetImport, characterTagFromGallery, sanitizeGallerySource, GALLERY_HOST_REPLIES } from './gallery-preset-import.js';
 import { getFloatFieldOptions, normalizeFloatFields } from './float-fields.js';
 import { replaceSceneSlotElements } from '../../shared/scene-slot-dom.js';
@@ -2045,7 +2046,7 @@ async function downloadCardOriginal(card, knownPreview = null) {
     }
 }
 
-// 长按 / 右键聊天图片：在按压位置弹操作面板（下载、同步到 Gallery；和灯箱共用 image-action-menu.js 的注册表）。
+// 长按 / 右键聊天图片：在按压位置弹操作面板（编辑提示词、下载、同步到 Gallery；和灯箱共用 image-action-menu.js 的注册表）。
 async function openCardActionMenu(card, { x, y }) {
     ensureGalleryLightboxAction();
     const preview = await resolveCardPreview(card);
@@ -2059,6 +2060,7 @@ async function openCardActionMenu(card, { x, y }) {
         total: parseInt(card.dataset.historyCount) || 1,
         card,
         download: () => downloadCardOriginal(card, preview),
+        edit: () => { if (!card.classList.contains('editing')) return toggleEditPanel(card, true); },
     }, {
         onError: (error, id) => {
             console.error('[NovelDraw] 图片操作失败:', id, error);
@@ -2074,11 +2076,10 @@ function setupEventDelegation() {
     document.addEventListener('click', handleDelegatedClick, { capture: true });
     chatImageGestures?.destroy();
     // 右往左滑 = 更新的一张（已是最新则重新生成）；左往右滑 = 更旧的一张；
-    // 单击 = 灯箱；双击 = 编辑提示词；长按 / 右键 = 操作面板（下载、同步到 Gallery）；竖滑放行给聊天滚动。
+    // 单击 = 灯箱（不再有双击，所以立即打开）；长按 / 右键 = 操作面板（编辑提示词、下载、同步到 Gallery）；竖滑放行给聊天滚动。
     chatImageGestures = attachChatImageCardGestures(document, {
         isBusy: isImageCardBusy,
         open: (card) => { void handleImageClick(card); },
-        edit: (card) => { if (!card.classList.contains('editing')) void toggleEditPanel(card, true); },
         menu: (card, point) => { void openCardActionMenu(card, point); },
         download: (card) => { void downloadCardOriginal(card); },
         navigate: (card, targetIndex) => { void navigateToImage(card, targetIndex); },
@@ -4816,6 +4817,17 @@ async function handleFrameMessage(event) {
                 const uc = typeof data.uc === 'string' ? data.uc.trim() : '';
                 const negativePrompt = uc ? joinTags(preset?.negativePrefix, uc) : (preset?.negativePrefix || '');
                 const base64 = await generateNovelImage({ scene, characterPrompts: [], negativePrompt, params: preset?.params || {} });
+                // 记住这张图，设置页「生成结果」下面的「下载 / 保存到画廊」按钮用（不进聊天图缓存）
+                lastTestImage = {
+                    imgId: `test_${Date.now()}`,
+                    base64,
+                    tags,
+                    positive: scene,
+                    negativePrompt,
+                    characterPrompts: [],
+                    params: preset?.params ? cloneSettingsObject(preset.params) : {},
+                    characterName: TEST_IMAGE_BATCH,
+                };
                 {
                     const iframe = document.getElementById('xbdraw-novel-draw-iframe');
                     if (iframe) postToIframe(iframe, { type: 'TEST_RESULT', url: getPreviewDisplayUrl({ base64 }) }, 'XBDraw-NovelDraw');
@@ -4826,6 +4838,49 @@ async function handleFrameMessage(event) {
             }
             break;
         }
+
+        case 'DOWNLOAD_TEST_IMAGE': {
+            if (!lastTestImage?.base64) { postStatus('error', '还没有生成结果', 'test-image'); break; }
+            try {
+                const name = await downloadImageOriginal(lastTestImage);
+                postStatus('success', `已开始下载：${name}`, 'test-image');
+            } catch (e) {
+                postStatus('error', `下载失败：${e?.message || e}`, 'test-image');
+            }
+            break;
+        }
+
+        case 'SAVE_TEST_IMAGE_TO_GALLERY':
+            await saveTestImageToGallery();
+            break;
+    }
+}
+
+// 设置页「参数」底部生成的测试图：和聊天图长按面板「同步到 Gallery」走同一条路（连了仓库存远端，没连存本机），批次固定为「参数测试」。
+const TEST_IMAGE_BATCH = '参数测试';
+let lastTestImage = null;
+let testImageSaving = false;
+
+async function saveTestImageToGallery() {
+    if (!lastTestImage?.base64) { postStatus('error', '还没有生成结果', 'test-image'); return; }
+    if (testImageSaving) return;
+    testImageSaving = true;
+    postStatus('loading', '正在存入画廊…', 'test-image');
+    try {
+        const target = await createTargetResolver(getGalleryStores())();
+        if (!target) throw new Error('画廊还不能用：本机存储没有准备好');
+        const input = { preview: lastTestImage, name2: TEST_IMAGE_BATCH };
+        let result = await exportChatImage(input, { target });
+        if (result?.skipped?.some(s => s.reason === 'deleted')
+            && await xbConfirm(READD_PROMPT, { title: '保存到画廊', okLabel: '重新加回' })) {
+            result = await exportChatImage(input, { target, reAdd: true });
+        }
+        const d = describeSaveResult(result);
+        postStatus(d.kind === 'success' ? 'success' : 'info', d.text, 'test-image');
+    } catch (e) {
+        postStatus('error', e?.message || '存入画廊失败', 'test-image');
+    } finally {
+        testImageSaving = false;
     }
 }
 

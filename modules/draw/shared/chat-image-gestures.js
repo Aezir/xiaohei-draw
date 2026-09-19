@@ -1,6 +1,7 @@
 // chat-image-gestures.js
 // 聊天图片卡和灯箱共用的手势识别：单击 / 双击 / 长按 / 左右滑，竖滑放行给页面滚动。
 // 识别器本身不碰 DOM（计时器可注入），便于 node 测试；bindGestures 用 Pointer Events 接到元素上（鼠标拖动也算滑动）。
+// 双击识别可关（options.doubleTap = false）：没有双击动作的地方（聊天图片卡）单击立即触发，不用等 300ms。
 
 export const GESTURE_THRESHOLDS = Object.freeze({
     slop: 10,             // 移动超过这个距离才判断方向，也是长按允许的抖动
@@ -18,9 +19,11 @@ export const GESTURE_THRESHOLDS = Object.freeze({
  * onTap({x,y}) / onDoubleTap({x,y}) / onLongPress({x,y}) / onSwipe({direction, dx, dy, dt})
  * direction: 'left' = 手指从右往左，'right' = 从左往右。
  * move() 返回 'horizontal' | 'vertical' | null，调用方据此阻止默认行为或放行。
+ * options.doubleTap = false 时不识别双击：抬起就触发 onTap，不再延迟等第二击。
  */
 export function createGestureRecognizer(handlers = {}, options = {}) {
     const t = { ...GESTURE_THRESHOLDS, ...(options.thresholds || {}) };
+    const detectDoubleTap = options.doubleTap !== false;
     const setTimer = options.setTimeout || ((fn, ms) => globalThis.setTimeout(fn, ms));
     const clearTimer = options.clearTimeout || (id => globalThis.clearTimeout(id));
     const emit = (name, payload) => {
@@ -99,6 +102,10 @@ export function createGestureRecognizer(handlers = {}, options = {}) {
                 emit('onDoubleTap', { x, y });
                 return 'doubletap';
             }
+            if (!detectDoubleTap) {
+                emit('onTap', { x, y });
+                return 'tap';
+            }
             const tapState = { x, y, upTime: time, timer: null };
             pendingTap = tapState;
             tapState.timer = setTimer(() => {
@@ -145,6 +152,7 @@ export function createGestureRecognizer(handlers = {}, options = {}) {
  * 把识别器接到 DOM 上。
  * - selector 为空：只绑 target 本身；selector 非空：target 作为委托根，handlers 第二个参数是命中的元素。
  * - handlers: onTap/onDoubleTap/onLongPress/onSwipe(payload, element, event)；enabled(element) 返回 false 时忽略。
+ *   没传 onDoubleTap 就不识别双击，单击抬起立即触发。
  * - 被识别的元素上吞掉 click、contextmenu（长按/触摸时）、dragstart，避免酒馆或浏览器的默认行为。
  */
 export function bindGestures(target, handlers = {}, { selector = '', thresholds, preventContextMenu = 'touch' } = {}) {
@@ -169,7 +177,7 @@ export function bindGestures(target, handlers = {}, { selector = '', thresholds,
             fire('onLongPress', payload);
         },
         onSwipe: payload => fire('onSwipe', payload),
-    }, { thresholds });
+    }, { thresholds, doubleTap: typeof handlers.onDoubleTap === 'function' });
 
     let lastElement = null;
     let lastEvent = null;
@@ -311,9 +319,10 @@ export function resolveChatImageSwipe(direction, currentIndex, historyCount) {
 
 /**
  * 聊天图片卡手势（真实图片卡才有；失败/等待占位卡没有 data-img-id，不会命中）。
- * actions: { open(card), edit(card), menu(card, {x, y}), download(card), navigate(card, targetIndex), regenerate(card), isBusy(card) }
- * 长按（触摸）/ 右键（鼠标）：有 menu 就在按压位置弹操作面板（下载、同步到 Gallery），没有 menu 才退回直接 download。
- * 长按之后不会再触发单击或双击（识别器在长按时清掉待定的单击）。
+ * actions: { open(card), menu(card, {x, y}), download(card), navigate(card, targetIndex), regenerate(card), isBusy(card) }
+ * 单击 = open（立即触发，没有双击所以不用等）；长按（触摸）/ 右键（鼠标）：有 menu 就在按压位置弹操作面板
+ * （编辑提示词、下载、同步到 Gallery），没有 menu 才退回直接 download。
+ * 编辑提示词只从面板进（原来的双击已取消）；长按之后不会再触发单击。
  */
 export function attachChatImageCardGestures(root, actions = {}) {
     const press = (card, point) => {
@@ -333,11 +342,6 @@ export function attachChatImageCardGestures(root, actions = {}) {
             const card = wrap.closest('.xb-nd-img');
             if (!card || busy(card) || card.classList.contains('editing')) return;
             actions.open?.(card);
-        },
-        onDoubleTap: (_payload, wrap) => {
-            const card = wrap.closest('.xb-nd-img');
-            if (!card || busy(card)) return;
-            actions.edit?.(card);
         },
         onLongPress: ({ x, y }, wrap) => press(wrap.closest('.xb-nd-img'), { x, y }),
         onContextMenu: typeof actions.menu === 'function'

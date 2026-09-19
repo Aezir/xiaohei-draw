@@ -904,6 +904,9 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius
 #nd-cost-bar .nd-cost-unit { font-size: 11px; color: var(--text-muted); }
 #nd-cost-bar .nd-gen-status { flex: 1 1 120px; min-width: 0; min-height: 0; margin: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nd-preview-card .preview-box { margin-top: 0; }
+/* 生成结果下面的「下载 / 保存到画廊」：有结果才随卡片一起显示 */
+.nd-preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.nd-preview-actions .status-text { flex: 1 1 120px; margin-top: 0; }
 @media (max-width: 420px) {
     #nd-cost-bar .nd-gen-btn { flex: 1 1 auto; min-width: 0; }
     #nd-cost-bar .nd-gen-status { flex-basis: 100%; text-align: left; }
@@ -1140,6 +1143,11 @@ input[type="range"].nd-free-range::-moz-range-track { background: linear-gradien
                         <div class="card nd-preview-card hidden" id="nd_preview_card">
                             <div class="card-title">生成结果</div>
                             <div id="nd_preview" class="preview-box"><img id="nd_preview_img" alt=""></div>
+                            <div class="nd-preview-actions">
+                                <button type="button" id="nd_preview_download" class="btn btn-sm"><i class="ri-download-2-line"></i> 下载</button>
+                                <button type="button" id="nd_preview_gallery" class="btn btn-sm"><i class="ri-image-add-line"></i> 保存到画廊</button>
+                                <div id="nd_preview_status" class="status-text"></div>
+                            </div>
                         </div>
                         <div class="nai-group-title">图片设置</div>
                         <div class="card">
@@ -3813,6 +3821,7 @@ window.addEventListener('message', event => {
             $('nd_preview_img').src = data.url;
             $('nd_preview').classList.add('visible');
             $('nd_preview_card')?.classList.remove('hidden');
+            updateStatus($('nd_preview_status'), '', '');
             $('nd_test_single').disabled = false;
             $('nd_preview').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             break;
@@ -3844,6 +3853,9 @@ window.addEventListener('message', event => {
                 updateStatus($('nd_filter_status'), data.state, data.text);
             } else if (data.target === 'gallery') {
                 updateStatus($('nd_gallery_status'), data.state, data.text);
+            } else if (data.target === 'test-image') {
+                updateStatus($('nd_preview_status'), data.state, data.text);
+                if ($('nd_preview_gallery')) $('nd_preview_gallery').disabled = data.state === 'loading';
             } else {
                 updateStatus($('nd_status'), data.state, data.text);
                 if (data.state !== 'loading' && $('nd_test_single')) $('nd_test_single').disabled = false;
@@ -4027,6 +4039,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     
+    // 生成结果下面的「下载 / 保存到画廊」：图的 base64 在宿主那边，只发消息，结果由 STATUS(target: test-image) 回来
+    $('nd_preview_download')?.addEventListener('click', () => postToParent({ type: 'DOWNLOAD_TEST_IMAGE' }));
+    $('nd_preview_gallery')?.addEventListener('click', () => {
+        const btn = $('nd_preview_gallery');
+        if (btn.disabled) return;
+        btn.disabled = true;
+        updateStatus($('nd_preview_status'), 'loading', '正在存入画廊…');
+        postToParent({ type: 'SAVE_TEST_IMAGE_TO_GALLERY' });
+    });
+
     // 底部生成栏「生成」：只在用户点击时发送，沿用原快速测试的 TEST_SINGLE（宿主用已保存的参数预设拼请求）
     // 点击时先冲刷自动保存，宿主会等这次写入完成再读预设
     $('nd_test_single').addEventListener('click', async () => {

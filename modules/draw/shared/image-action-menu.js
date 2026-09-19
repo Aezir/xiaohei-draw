@@ -4,9 +4,9 @@
 //
 // 注册：registerImageAction({ id, icon, label, when(ctx), run(ctx), order, surfaces })
 //   surfaces：出现在哪里，'chat'（聊天图片长按）/ 'lightbox'（灯箱长按），缺省两处都有。
-//   ctx = { surface, slotId, messageId, preview, index, total, download()?, lightbox?, card? }
+//   ctx = { surface, slotId, messageId, preview, index, total, download()?, edit()?, lightbox?, card? }
 //   when 返回真值才显示；run 可以是 async。返回值是注销函数。
-// 内置：下载（两处都有，下载原图）。
+// 内置：编辑提示词（只在聊天图片卡，ctx 给了 edit 才显示）、下载（两处都有，下载原图）。
 
 import { ensureRemixIcon } from './remixicon-loader.js';
 import { XB_ACCENT, xbAccentSoft } from './xb-theme.js';
@@ -59,6 +59,17 @@ export function listImageActions(ctx, surface) {
 }
 
 const hasImage = ctx => !!(ctx?.preview?.base64 || ctx?.preview?.savedUrl);
+
+// 聊天图片卡：编辑提示词（原来是双击图片，改成从长按面板进）。已经在编辑中的卡不再显示。
+registerImageAction({
+    id: 'edit-prompt',
+    icon: 'ri-edit-line',
+    label: '编辑提示词',
+    order: 10,
+    surfaces: ['chat'],
+    when: ctx => typeof ctx?.edit === 'function' && !ctx?.card?.classList?.contains?.('editing'),
+    run: ctx => ctx.edit(),
+});
 
 registerImageAction({
     id: 'download-original',

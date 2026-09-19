@@ -191,6 +191,13 @@ https://github.com/Aezir/xiaohei-draw
   - 测试：新增 `supplement-prompt`（3），`settings-export` +1，`float-fields` 默认项断言更新；274 条全过。本地静态页模拟宿主验证：增补卡回填、自动保存、开关、浮窗开关与不被裁切、导入拒绝非本插件文件和坏 JSON、确认框内容、发出 `IMPORT_SETTINGS`。宿主侧真实覆盖写入、备份下载未在真实酒馆里实测。
 - 2026-09-16 修悬浮球「增补」开关点不动：酒馆 `style.css` 给所有 `input[type=checkbox]` 加 `appearance:none` + 主题正文色底 + `::before` 画勾，在悬浮菜单里是白方块、看不出勾选。`float-fields.js` 的 toggle 改成自绘 `<button role="switch" aria-checked>`（`.nd-switch` + `.nd-switch-knob`，纯填充无描边），点击先乐观翻转再保存，保存后 sync 按真实值回写；原生 checkbox 不再出现在菜单里。Harness `docs/plans/harness/float-switch.html`（模拟酒馆 checkbox 样式）验证：开 / 关各一次，`supplementPrompt.enabled` 跟着变、增补内容保留，开关 36×20、关灰开粉。274 条测试全过；未在真实酒馆里实测。
 
+- 2026-09-19 聊天图片：取消双击编辑，编辑提示词进长按面板；编辑窗口改成浮在图片正中的弹框；「参数」页测试图下面加「下载 / 保存到画廊」：
+  - 手势（`shared/chat-image-gestures.js`）：`createGestureRecognizer` 新增 `options.doubleTap`（默认开），关掉时抬起立即触发 `onTap`、不再等 300ms；`bindGestures` 没传 `onDoubleTap` 就自动关掉。`attachChatImageCardGestures` 删掉 `edit` 动作和双击识别，聊天图片单击开灯箱不再有 300ms 延迟。灯箱自己传了 `onDoubleTap`（适应 ↔ 2 倍），行为不变。
+  - 长按面板（`shared/image-action-menu.js`）内置「编辑提示词」（id `edit-prompt`，`ri-edit-line`，order 10，只在 `chat`，ctx 给了 `edit()` 才显示，正在编辑的卡不显示）；宿主 `openCardActionMenu` 的 ctx 多传 `edit`。面板顺序：编辑提示词 / 下载 / 同步到 Gallery。
+  - 编辑窗口（`shared/chat-image-card.js` 样式）：真实图片卡（`[data-img-id].editing`）的 `.xb-nd-edit` 绝对定位在卡片正中（`width: min(460px, 100% - 16px)`、`max-height: 100% - 16px`、超高时中间滚动区自己滚），图片 `brightness(0.4)` 当遮罩，卡片不再被撑高；失败占位卡的编辑窗口仍是卡内展开。HTML 结构和 `data-action` 没变。
+  - 「参数」页生成结果卡（`novel-draw.html` `#nd_preview_card`）下加「下载」「保存到画廊」+ 状态文字（`#nd_preview_status`）。宿主 `TEST_SINGLE` 出图后记住 `lastTestImage`（base64、tags、正负向、参数快照，不进聊天图缓存）；新消息 `DOWNLOAD_TEST_IMAGE`（走 `downloadImageOriginal`）、`SAVE_TEST_IMAGE_TO_GALLERY`（走 `exportChatImage`，连了仓库存远端、没连存本机，批次固定「参数测试」，删过的图页内确认是否加回），结果 `STATUS {target: 'test-image'}` 回到那行状态文字。
+  - 测试：`chat-image-ui.test.mjs` +2（关双击立即单击；弹框样式），共享注册表用例补 `edit-prompt`；188 条全过。harness `chat-image-harness.html`：单击立即开灯箱、双击不进编辑、面板三项、点「编辑提示词」进编辑且弹框居中不撑高、编辑中长按不弹面板；顺手修了上次「点下即提示」之后漂移的画廊用例（「正在存入画廊…」不算结果），90 项全过（`.claude/launch.json` 用 8791 端口起静态服务）。设置页按钮没在真实酒馆里实测。
+
 ## 目录地图（改哪里）
 
 ```

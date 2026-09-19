@@ -1,7 +1,8 @@
 // chat-image-card.js
 // 聊天消息里的图片卡：唯一的渲染器（原先 novel-draw.js 和 draw-common.js 各有一份）。
-// - 真实图片卡（preview / saved / saving / refreshing）：没有任何按钮，操作全靠手势（见 chat-image-gestures.js）。
-// - 失败 / 等待占位卡：保留「重新生成 / 编辑提示词 / 移除」按钮。
+// - 真实图片卡（preview / saved / saving / refreshing）：没有任何按钮，操作全靠手势（见 chat-image-gestures.js）；
+//   编辑提示词从长按面板进，编辑窗口是浮在图片正中的弹框（图片压暗），不再把卡片往下撑开。
+// - 失败 / 等待占位卡：保留「重新生成 / 编辑提示词 / 移除」按钮，编辑窗口仍是卡内展开。
 // - 外观：Notion 暗色，零边线零阴影，层级只靠底色；图标用 Remix Icon。
 // 本文件不 import 酒馆模块，独立页面（harness）也能直接用。
 // 数据格式不变：data-slot-id / data-img-id / data-tags / data-mesid 等属性，老聊天（含 LittleWhiteBox 生成的图）照常渲染。
@@ -93,6 +94,12 @@ const CHAT_IMAGE_CSS = `
 .xb-nd-edit .xb-nd-btn:hover { background: #333333; }
 .xb-nd-edit .xb-nd-btn.primary { background: ${XB_ACCENT}; color: ${XB_ON_ACCENT}; font-weight: 600; }
 .xb-nd-edit .xb-nd-btn.primary:hover { background: ${XB_ACCENT_HOVER}; }
+/* 真实图片卡的编辑窗口：浮在图片正中的弹框，图片压暗当遮罩；高度超过图片时窗口内部滚动 */
+.xb-nd-img[data-img-id].editing .xb-nd-img-wrap { cursor: default; }
+.xb-nd-img[data-img-id].editing .xb-nd-img-wrap img { filter: brightness(0.4); }
+.xb-nd-img[data-img-id].editing .xb-nd-edit { position: absolute; left: 50%; top: 50%; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; width: min(460px, calc(100% - 16px)); max-height: calc(100% - 16px); margin: 0; transform: translate(-50%, -50%); }
+.xb-nd-img[data-img-id].editing .xb-nd-edit-title, .xb-nd-img[data-img-id].editing .xb-nd-edit-actions { flex: 0 0 auto; }
+.xb-nd-img[data-img-id].editing .xb-nd-edit-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
 @media (pointer: coarse) { .xb-nd-btn { min-height: 36px; padding: 6px 12px; } }
 `;
 
