@@ -46,6 +46,19 @@ https://github.com/Aezir/xiaohei-draw
 
 ## 自己的改动记录（重跑拆分脚本前先看这里）
 
+- 2026-09-20 长按面板 →「编辑提示词」在触屏上不再自动聚焦场景输入框（键盘不会自己弹起来）：`chat-image-card.js` 新增 `shouldAutoFocusEditor(win)`，`(pointer: coarse)` 或 `(hover: none)` 命中就不 focus，鼠标设备照旧；失败卡的「编辑提示词」按钮走同一函数。测试 `chat-image-ui.test.mjs` 加用例。
+- 2026-09-20 场景 Agent 设置：官方渠道并进 Provider 下拉、Base URL 去掉 datalist；生成前确认不再拿 V5 当理由：
+  - `agent-core/ui/settings-markup.js` 的 Base URL 输入框去掉 `list=` 和 `<datalist>`（手机上一点输入框就弹一排选项挡住键盘），占位改成 `https://…/v1`。Provider 下拉末尾加 `<optgroup>`「官方渠道」（DeepSeek、智谱、Kimi、硅基流动、通义、豆包、MiniMax、OpenRouter），清单在新文件 `agent-core/ui/vendor-presets.js`；选中后 `settings-panel.js` 把通道切成「酒馆 OpenAI 兼容」并填上官方地址（Key / 模型保留该通道原来的值），下拉随即显示为「酒馆 OpenAI 兼容」。
+  - `novel-cost-rule.js` 的 `needsGenerateConfirm` 删掉「当前是 V5 模型（测试期间约定不用 V5）」这条；只剩会花 Anlas（含不确定免费）和参数超限。`isV5ModelId` 仍导出。测试 `cost-bar.test.mjs`、`edit-regenerate.test.mjs` 跟着改。
+- 2026-09-20 场景 Agent 连接类报错说人话（针对 TauriTavern 里「Provider 请求失败：Connection error.」和拉模型「Failed to fetch」）：
+  - 新文件 `modules/agent-core/connection-failure-hint.js`：把 error → cause 链上的信息收齐（SDK 只说「Connection error.」，真正的「Failed to fetch」在 cause 里），`describeErrorWithCause` 拼成「Connection error.（底层：Failed to fetch）」；`describeConnectionFailureHint(error, provider)` 按通道给指引——浏览器直连（OpenAI 兼容 / Anthropic / Google）= 没拿到回应，多半是 CORS（TauriTavern 页面源 http://tauri.localhost）/ 混合内容 / 地址不通，建议改「酒馆 OpenAI 兼容」；酒馆通道 = 浏览器都没拿到回应说明这个酒馆没这条接口，后端回了状态码但说连不上上游就查地址和后端所在网络。有状态码的直连报错不算连接失败。
+  - `draw-agent-runtime.js` 的 `mapProviderError` 用 `describeErrorWithCause`，`describeProviderErrorHint` 在 OpenAI Responses 老规则之后接上连接类指引（其他 provider 也给）。`agent-core/ui/settings-panel.js`：`tryCandidateFetches` 里 fetch 直接抛错时带上地址重新抛，两个「拉取模型」按钮的失败文案走新的 `describePullError`。
+  - 测试：`tests/novelai/agent-error-hint.test.mjs` 加连接类用例。
+- 2026-09-20 楼层配图的卡片「看门狗」+ 日志记上屏（针对 TauriTavern 里「全部生成完才一起显示」）：
+  - 原因：每张图出来就往楼层 DOM 插一张卡，但 TauriTavern 的 ChatSurface 在 `updateMessageBlock` 之后会再异步提交一次楼层内容（注册了内容处理器时 `.mes_text` 先清空、稍后回填），刚插的卡被冲掉；增量插入失败就只能等结束后整楼重写。
+  - `novel-draw.js` 的 `runGenerateAndInsertImages`：等待 / 成功 / 失败卡插进去后登记到 `slotCards`，隔 150ms / 600ms / 2s 各查一次卡还在不在（成功卡按 `data-img-id`，等待 / 失败卡按 `data-state`），不在就用原 HTML 补插一次（只补 DOM，不再 `updateMessageBlock`，免得再触发一次冲掉）；聊天切走、楼层在编辑、任务结束都停。`runNovelImageBatch` 的 `onItemReady` / `onItemSettled` 多给一个 `logIndex`。
+  - 日志：`drawLog.naiShown(index, { immediate, reinserts, misses })`，NAI 请求每张图标题后面多「上屏：出图即上屏 / 上屏后被冲掉，补插 N 次 / 没插上楼层」（`draw-log.js` 的 `describeNaiShown`，复制文本同样带）。文本配图没有这一项。
+  - 测试：`tests/novelai/draw-log.test.mjs` 加上屏描述用例。`.claude/launch.json` 多一个 `gallery` 配置（本机静态起 nai_gallery 量性能用）。
 - 2026-09-15 设置页新增「日志」标签页（左栏 + 手机底栏，`#view-log`）：
   - 一次配图（楼层配图 `generateAndInsertImages`、文本配图 `generateImagesFromText`）记一条，最多 50 条，存本机 IndexedDB 库 `xb_draw_logs`，不写酒馆设置文件。两个函数改成「开日志 → 调原来的 `run…` → 记结果」的外壳，原逻辑搬进 `runGenerateAndInsertImages` / `runGenerateImagesFromText`，只多收一个 `drawLog` 参数。
   - 记三块：场景 Agent 每一轮（分析 / 纠错）的实际请求 messages、模型原始回复、没过校验的错误码 / 路径 / 说明、耗时（`onDiagnosticUpdate` 折进日志；`draw-agent-runtime.js` 的 attempts 每轮多存一份 `modelOutput`，通过校验的那轮也能看到回复）；NAI 每张图实际 payload 里的正负向、角色提示词和坐标、模型、尺寸、步数、CFG、采样器、种子、氛围图数量和成败（`runNovelImageBatch` 多收 `drawLog`）；楼层渲染（`message-rerender.js` 加可选 `onRenderReport`，`draw-common.js` 补上 MVU 忙不忙、有没有 `<StatusPlaceHolderImpl/>`、半秒后状态栏是 iframe 还是代码，自愈补发与补发后是否恢复；给了回调时最后一次补发后会多查一次，只报告不补发）。

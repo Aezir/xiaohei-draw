@@ -321,3 +321,12 @@ test('下载原图：优先 base64，没有才取 savedUrl；文件名合理', a
     assert.equal(getOriginalImageFileName({ imgId: 'img-8', savedUrl: '/user/images/c/novel_img-8.png' }, fetched), 'novel_img-8.png');
     await assert.rejects(() => resolveOriginalImageBlob({ imgId: 'none' }), /没有可下载的原图/);
 });
+
+test('编辑面板自动聚焦：鼠标设备聚焦，触屏（pointer: coarse / hover: none）不聚焦，免得键盘自己弹', async () => {
+    const { shouldAutoFocusEditor } = await import('../../modules/draw/shared/chat-image-card.js');
+    const win = (coarse, noHover) => ({ matchMedia: (q) => ({ matches: q.includes('coarse') ? coarse : noHover }) });
+    assert.equal(shouldAutoFocusEditor(win(false, false)), true);
+    assert.equal(shouldAutoFocusEditor(win(true, false)), false);
+    assert.equal(shouldAutoFocusEditor(win(false, true)), false);
+    assert.equal(shouldAutoFocusEditor({}), true);
+});

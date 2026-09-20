@@ -1843,7 +1843,7 @@ async function runNovelImageBatch({
                 const error = new NovelDrawError('已取消', ErrorType.ABORTED);
                 outcomes[pending] = { state: 'cancelled', error };
                 logResult(pending, 'cancelled');
-                await onItemSettled?.({ index: pending, state: 'cancelled', error, source: 'frontend' });
+                await onItemSettled?.({ index: pending, state: 'cancelled', error, source: 'frontend', logIndex: logOffset + pending });
             }
             break;
         }
@@ -1867,7 +1867,7 @@ async function runNovelImageBatch({
                 },
             );
             logResult(index, 'ready');
-            await onItemReady?.({ index, base64, prepared: prepared[index] });
+            await onItemReady?.({ index, base64, prepared: prepared[index], logIndex: logOffset + index });
             outcomes[index] = { state: 'ready', base64 };
         } catch (error) {
             const normalized = signal?.aborted
@@ -1876,7 +1876,7 @@ async function runNovelImageBatch({
             const state = signal?.aborted ? 'cancelled' : 'failed';
             outcomes[index] = { state, error: normalized };
             logResult(index, state, state === 'failed' ? normalized : null);
-            await onItemSettled?.({ index, state, error: normalized, source: 'frontend' });
+            await onItemSettled?.({ index, state, error: normalized, source: 'frontend', logIndex: logOffset + index });
         }
     }
     return { mode: requestConfig.sendMode, outcomes, aborted: signal?.aborted === true };
@@ -2848,6 +2848,7 @@ async function runGenerateAndInsertImages({
 
     const job = createGenerationJob(messageId);
     let placementLifecycle = null;
+    let stopSlotWatch = () => {};
 
     try {
         await loadSettings();
@@ -2997,20 +2998,63 @@ async function runGenerateAndInsertImages({
             if (isMessageBeingEdited(messageId)) return;
             await rerenderChatMessage(messageId, message, { text: sourceText });
         };
+        // 插进楼层的卡（等待 / 成功 / 失败）不一定留得住：TauriTavern 这类宿主会在 updateMessageBlock 之后
+        // 再异步提交一次楼层内容，别的插件也可能整楼重写。所以每次插卡后隔 150ms / 600ms / 2s 各查一次，
+        // 卡不在了就按原样补插（只补 DOM，不重渲染楼层，免得再触发一次冲掉）。每张图立刻上屏了没有、
+        // 补插了几次，记进设置页「日志」的 NAI 请求里。
+        const slotCards = new Map();
+        let slotWatchTimer = null;
+        const SLOT_WATCH_DELAYS = [150, 600, 2000];
+        const slotCardPresent = (slotId, card) => {
+            const el = document.querySelector(`#chat .mes[mesid="${messageId}"] .mes_text ${buildDrawSlotSelector(slotId)}`);
+            if (!el) return false;
+            if (card.imgId) return el.dataset.imgId === card.imgId;
+            return !card.state || el.dataset.state === card.state;
+        };
+        const noteShown = (card, patch) => {
+            card.shown = { ...card.shown, ...patch };
+            if (card.logIndex != null) drawLog?.naiShown?.(card.logIndex, card.shown);
+        };
+        const armSlotWatch = () => {
+            clearTimeout(slotWatchTimer);
+            let step = 0;
+            const tick = () => {
+                slotWatchTimer = null;
+                if (!moduleInitialized || terminationReason || placementLifecycle?.settled) return;
+                const ctx = getContext();
+                if (ctx.chatId !== initialChatId || ctx.chat?.[messageId] !== message) return;
+                if (!isMessageBeingEdited(messageId)) {
+                    for (const [slotId, card] of slotCards) {
+                        if (slotCardPresent(slotId, card)) continue;
+                        let ok = false;
+                        try { ok = insertPreviewIntoRenderedMessage({ messageId, slotId, html: card.html }); } catch { ok = false; }
+                        requiresFinalDomSync = true;
+                        noteShown(card, ok ? { reinserts: card.shown.reinserts + 1 } : { misses: card.shown.misses + 1 });
+                    }
+                }
+                if (step < SLOT_WATCH_DELAYS.length) slotWatchTimer = setTimeout(tick, SLOT_WATCH_DELAYS[step++]);
+            };
+            slotWatchTimer = setTimeout(tick, SLOT_WATCH_DELAYS[step++]);
+        };
+        const trackSlotCard = (slotId, { html, state = '', imgId = '', logIndex = null }, inserted) => {
+            const card = { html, state, imgId, logIndex, shown: { immediate: inserted === true, reinserts: 0, misses: 0 } };
+            slotCards.set(slotId, card);
+            if (logIndex != null) noteShown(card, {});
+            armSlotWatch();
+        };
+        stopSlotWatch = () => { clearTimeout(slotWatchTimer); slotWatchTimer = null; slotCards.clear(); };
         const renderPendingSlots = () => {
             const settledSlotIds = new Set(results.filter(Boolean).map((item) => item.slotId));
             slotIds.forEach((slotId, index) => {
                 if (settledSlotIds.has(slotId)) return;
-                insertPreviewIntoRenderedMessage({
-                    messageId,
+                const html = buildPendingImageHtml({
                     slotId,
-                    html: buildPendingImageHtml({
-                        slotId,
-                        messageId,
-                        index: index + 1,
-                        total: slotIds.length,
-                    }),
+                    messageId,
+                    index: index + 1,
+                    total: slotIds.length,
                 });
+                const inserted = insertPreviewIntoRenderedMessage({ messageId, slotId, html });
+                trackSlotCard(slotId, { html, state: 'pending' }, inserted);
             });
         };
         const recoverRenderedSlots = async () => {
@@ -3083,13 +3127,14 @@ async function runGenerateAndInsertImages({
             }
             return true;
         };
-        const renderSettledSlot = async (slotId, createHtml) => {
+        const renderSettledSlot = async (slotId, createHtml, { logIndex = null, imgId = '', state = '' } = {}) => {
             if (!checkPlacementContext()) return;
             const target = { messageId, isActiveSwipe: true };
             if (!target?.isActiveSwipe) return;
             const html = typeof createHtml === 'function' ? createHtml(target.messageId) : createHtml;
+            let inserted = false;
             try {
-                const inserted = insertPreviewIntoRenderedMessage({ messageId: target.messageId, slotId, html });
+                inserted = insertPreviewIntoRenderedMessage({ messageId: target.messageId, slotId, html });
                 if (!inserted) {
                     requiresFinalDomSync = true;
                     if (!placementLifecycle.committedEarly) await recoverRenderedSlots();
@@ -3098,6 +3143,7 @@ async function runGenerateAndInsertImages({
                 requiresFinalDomSync = true;
                 console.warn('[NovelDraw] 增量渲染失败, 继续生成:', error);
             }
+            trackSlotCard(slotId, { html, state, imgId, logIndex }, inserted);
         };
         const compiledBatch = compileNovelScenePlan(
             tasks,
@@ -3170,7 +3216,7 @@ async function runGenerateAndInsertImages({
                 checkPlacementContext();
                 onStateChange?.(state, data);
             },
-            onItemReady: async ({ index, base64, prepared, guard = async () => {} }) => {
+            onItemReady: async ({ index, base64, prepared, guard = async () => {}, logIndex = null }) => {
                 const item = batchItems[index];
                 const imgId = item.imgId;
                 // 落库与选中先做完，再谈渲染：这两步是这张图唯一的持久事实，
@@ -3207,9 +3253,9 @@ async function runGenerateAndInsertImages({
                     state: ImageState.PREVIEW,
                     historyCount: 1,
                     currentIndex: 0,
-                }));
+                }), { logIndex, imgId });
             },
-            onItemSettled: async ({ index, state, error, guard = async () => {} }) => {
+            onItemSettled: async ({ index, state, error, guard = async () => {}, logIndex = null }) => {
                 if (state === 'cancelled') return;
                 // 失败记录是持久事实，不能被渲染守卫挡掉：聊天切走了、楼层正在编辑，
                 // 都不改变「这张图失败了」，用户回来时必须看到失败卡而不是一个空占位符。
@@ -3223,7 +3269,7 @@ async function runGenerateAndInsertImages({
                     positive: item.scene,
                     errorType: errorType.label,
                     errorMessage: errorType.desc,
-                }));
+                }), { logIndex, state: 'failed' });
             },
         });
         if (batchResult.aborted && !terminationReason) {
@@ -3350,6 +3396,7 @@ async function runGenerateAndInsertImages({
         return { success: successCount, total: tasks.length, results: results.filter(Boolean) };
 
     } finally {
+        stopSlotWatch();
         if (placementLifecycle && !placementLifecycle.settled) {
             const {
                 message,

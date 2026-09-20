@@ -47,7 +47,7 @@ test('档位未知（估算为「约」）：先确认，确认后生成', async
 });
 
 test('确认被取消：提示词已保存，不生成', async () => {
-    const d = deps({ check: () => presetGenerateConfirm({ params: { ...freePreset.params, model: 'nai-diffusion-5-full' } }, opusVerified), confirm: async () => false });
+    const d = deps({ check: () => presetGenerateConfirm({ params: { ...freePreset.params, steps: 40 } }, opusVerified), confirm: async () => false });
     assert.equal(await saveAndRegenerate({}, d), 'cancelled');
     assert.deepEqual(d.calls, ['save', ['notify', '提示词已保存，未重新生成']]);
 });
@@ -65,10 +65,10 @@ test('生成抛错：锁会释放，错误往上抛给宿主处理', async () =>
     assert.equal(await saveAndRegenerate(key, deps()), 'regenerated');
 });
 
-test('花费规则：V5 / 收费 / 超限 / 档位未知都要确认，免费不确认；nd-cost-bar 旧导出仍可用', () => {
+test('花费规则：收费 / 超限 / 档位未知都要确认，免费不确认，V5 本身不再是理由；nd-cost-bar 旧导出仍可用', () => {
     assert.equal(presetGenerateConfirm(freePreset, opusVerified).confirm, false);
     assert.equal(presetGenerateConfirm(freePreset, { tier: 1, active: true }).confirm, true);
-    assert.match(presetGenerateConfirm({ params: { ...freePreset.params, model: 'nai-diffusion-5-full' } }, opusVerified).reasons.join(), /V5/);
+    assert.equal(presetGenerateConfirm({ params: { ...freePreset.params, model: 'nai-diffusion-5-full' } }, opusVerified).reasons.some(reason => reason.includes('V5')), false);
     assert.equal(presetGenerateConfirm({ params: { ...freePreset.params, width: 1600, height: 1600 } }, opusVerified).confirm, true);
     assert.equal(presetGenerateConfirm({ params: { ...freePreset.params, steps: 40 } }, opusVerified).confirm, true);
     assert.equal(typeof describeCost, 'function');

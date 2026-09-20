@@ -275,6 +275,20 @@ export function hasStatusPlaceholder(text) {
 }
 
 /**
+ * 楼层配图里每张图「上屏」的情况：出图后插进楼层的卡有没有立刻插上、事后被冲掉补插了几次。
+ * shown = { immediate, reinserts, misses }；文本配图没有这一项，返回空串。
+ */
+export function describeNaiShown(shown) {
+    if (!shown || typeof shown !== 'object') return '';
+    const reinserts = Number(shown.reinserts) || 0;
+    const misses = Number(shown.misses) || 0;
+    if (shown.immediate === true && !reinserts && !misses) return '出图即上屏';
+    if (reinserts) return `${shown.immediate === true ? '上屏后被冲掉' : '没立刻插上'}，补插 ${reinserts} 次${misses ? `，另有 ${misses} 次没插上` : ''}`;
+    if (shown.immediate === true) return `上屏后被冲掉，${misses} 次补插没插上`;
+    return `没插上楼层（${misses ? `试了 ${misses} 次，` : ''}等结束整楼重写）`;
+}
+
+/**
  * message-rerender.js 的 onRenderReport 报告折进一条日志的 renders 列表。
  * stage: rendered（改写了楼层）/ skipped（在编辑，没渲染）/ error / checked（隔半秒查状态栏）/ retried（自愈补发）/ superseded（被新一轮渲染接手）
  */
@@ -511,7 +525,8 @@ export function buildEntryCopyText(entry) {
     images.forEach((image, index) => {
         const req = image.request || {};
         const state = image.state === 'ready' ? '成功' : image.state === 'failed' ? '失败' : image.state === 'cancelled' ? '已取消' : '没回结果';
-        lines.push('', `-- 图 ${index + 1} · ${state}${image.error ? `：${[image.error.label, image.error.message].filter(Boolean).join(' | ')}` : ''} --`);
+        const shown = describeNaiShown(image.shown);
+        lines.push('', `-- 图 ${index + 1} · ${state}${image.error ? `：${[image.error.label, image.error.message].filter(Boolean).join(' | ')}` : ''}${shown ? ` · 上屏：${shown}` : ''} --`);
         lines.push(`模型：${req.model || '—'}  尺寸：${req.width ?? '—'}×${req.height ?? '—'}  步数：${req.steps ?? '—'}  CFG：${req.scale ?? '—'}  采样器：${req.sampler || '—'}  种子：${req.seed ?? '—'}  氛围图：${req.vibeCount ?? 0} 张`);
         lines.push('正向提示词：', indent(req.positive || ''));
         lines.push('负向提示词：', indent(req.negative || ''));

@@ -24,6 +24,8 @@ import {
     normalizeTemperature,
     shouldSendTemperature,
 } from '../provider-resolution.js';
+import { describeConnectionFailureHint, describeErrorWithCause } from '../connection-failure-hint.js';
+import { VENDOR_TARGET_PROVIDER, resolveVendorPreset } from './vendor-presets.js';
 import {
     getReasoningEffortOptions,
     getReasoningModeOptions,
@@ -252,12 +254,27 @@ function extractGoogleModels(data) {
     );
 }
 
+/** 拉模型失败的展示文案：连接类失败（没拿到回应）多给一句该查什么 */
+export function describePullError(error, provider = '') {
+    const message = describeErrorWithCause(error, '拉取模型失败');
+    const hint = describeConnectionFailureHint(error, provider);
+    return hint ? `${message}。${hint}` : message;
+}
+
 async function tryCandidateFetches({ urls, requestOptionsList, extractModels, providerLabel }) {
     let lastFailure = null;
 
     for (const url of urls) {
         for (const requestOptions of requestOptionsList) {
-            const result = await fetchJsonWithDiagnostics(url, requestOptions);
+            let result;
+            try {
+                result = await fetchJsonWithDiagnostics(url, requestOptions);
+            } catch (error) {
+                // fetch 直接抛错 = 没拿到任何回应（CORS / 混合内容 / 地址不通），换下一个候选地址也没用，带上地址原样往外抛
+                const wrapped = new Error(`${providerLabel} 拉取模型失败：没拿到回应（${describeErrorWithCause(error)}） (${url})`);
+                wrapped.cause = error;
+                throw wrapped;
+            }
             if (!result.ok) {
                 lastFailure = result;
                 continue;
@@ -1209,13 +1226,16 @@ export function createAgentSettingsPanel(deps = {}) {
         if (!root?.querySelector?.('#xb-assistant-provider')) return;
 
         root.querySelector('#xb-assistant-provider')?.addEventListener('change', (event) => {
-            const nextProvider = event.currentTarget.value;
+            // 官方渠道快捷项：通道切成「酒馆 OpenAI 兼容」并填上官方地址，Key / 模型保留该通道原来的
+            const vendor = resolveVendorPreset(event.currentTarget.value);
+            const nextProvider = vendor ? VENDOR_TARGET_PROVIDER : event.currentTarget.value;
             const previousProvider = ensureConfigDraft().provider;
             const draft = syncConfigDraft(root, { provider: previousProvider });
             state.configDraft = {
                 ...draft,
                 provider: nextProvider,
                 ...buildProviderDraftFields(nextProvider, draft.modelConfigs),
+                ...(vendor ? { baseUrl: vendor.baseUrl } : {}),
             };
             requestConfigFormSync();
             render?.();
@@ -1424,7 +1444,7 @@ export function createAgentSettingsPanel(deps = {}) {
                 setProviderModels(providerConfig.provider, []);
                 setPullState(providerConfig.provider, {
                     status: 'error',
-                    message: describeError(error),
+                    message: describePullError(error, providerConfig.provider),
                 });
             }
             requestConfigFormSync();
@@ -1448,7 +1468,7 @@ export function createAgentSettingsPanel(deps = {}) {
                 setProviderModels(providerConfig.provider, [], 'delegate');
                 setPullState(providerConfig.provider, {
                     status: 'error',
-                    message: describeError(error),
+                    message: describePullError(error, providerConfig.provider),
                 }, 'delegate');
             }
             requestConfigFormSync();

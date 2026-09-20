@@ -8,6 +8,7 @@ import {
     applyRenderReport,
     buildEntryCopyText,
     createDrawLogEntry,
+    describeNaiShown,
     failEntry,
     finishEntryFromResult,
     foldAgentDiagnostic,
@@ -131,6 +132,20 @@ test('渲染报告：改写 → 半秒后还是代码 → 补发 → 恢复', ()
     );
     assert.equal(hasStatusPlaceholder('正文\n\n<StatusPlaceHolderImpl/>'), true);
     assert.equal(hasStatusPlaceholder('正文'), false);
+});
+
+test('上屏描述：即时 / 被冲掉补插 / 没插上；文本配图没有这一项', () => {
+    assert.equal(describeNaiShown(undefined), '');
+    assert.equal(describeNaiShown({ immediate: true, reinserts: 0, misses: 0 }), '出图即上屏');
+    assert.equal(describeNaiShown({ immediate: true, reinserts: 2, misses: 0 }), '上屏后被冲掉，补插 2 次');
+    assert.equal(describeNaiShown({ immediate: false, reinserts: 1, misses: 1 }), '没立刻插上，补插 1 次，另有 1 次没插上');
+    assert.equal(describeNaiShown({ immediate: false, reinserts: 0, misses: 3 }), '没插上楼层（试了 3 次，等结束整楼重写）');
+    assert.equal(describeNaiShown({ immediate: true, reinserts: 0, misses: 2 }), '上屏后被冲掉，2 次补插没插上');
+    const entry = createDrawLogEntry({ kind: 'message', messageId: 3 });
+    entry.nai.images = [{ state: 'ready', request: {}, shown: { immediate: false, reinserts: 1, misses: 0 } }, { state: 'ready', request: {} }];
+    const text = buildEntryCopyText(entry);
+    assert.match(text, /-- 图 1 · 成功 · 上屏：没立刻插上，补插 1 次 --/);
+    assert.match(text, /-- 图 2 · 成功 --/);
 });
 
 test('结果与复制文本：成功几张 / 失败原因，复制文本含三块且无密钥', () => {

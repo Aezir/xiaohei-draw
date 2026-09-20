@@ -4055,7 +4055,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = $('nd_test_single');
         if (btn.disabled) return;
         flushParamsSave();
-        // 测试期间：不确定免费、或是 V5，都要二次确认
+        // 会花 Anlas（或不确定免费）才二次确认
         const savedPreset = (state.paramsPresets || []).find(x => x.id === state.selectedParamsPresetId) || state.paramsPresets?.[0];
         if (btn.dataset.confirming) return;
         btn.dataset.confirming = '1';

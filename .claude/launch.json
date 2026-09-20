@@ -4,8 +4,28 @@
     {
       "name": "harness",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8791", "--bind", "127.0.0.1"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8791",
+        "--bind",
+        "127.0.0.1"
+      ],
       "port": 8791
+    },
+    {
+      "name": "gallery",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8792",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "D:/projects/nai_gallery"
+      ],
+      "port": 8792
     }
   ]
 }

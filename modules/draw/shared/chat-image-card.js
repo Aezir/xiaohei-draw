@@ -255,6 +255,18 @@ export function updateImageCardHistory(card, currentIndex, historyCount, { flash
     if (flash) flashImageCardPosition(card);
 }
 
+/**
+ * 打开编辑面板时要不要自动把光标放进场景框：鼠标设备要（省一次点击），触屏不要——
+ * 长按面板点「编辑提示词」是手指操作，一 focus 键盘立刻弹起来把面板顶走，用户想改哪个框自己点。
+ */
+export function shouldAutoFocusEditor(win = globalThis) {
+    try {
+        const mq = win?.matchMedia;
+        if (typeof mq !== 'function') return true;
+        return !(mq.call(win, '(pointer: coarse)').matches || mq.call(win, '(hover: none)').matches);
+    } catch { return true; }
+}
+
 /** 打开编辑面板（场景 + 各角色提示词）。数据由调用方传入。 */
 export function openImageCardEditor(card, { tags, characterPrompts = [] } = {}) {
     const panel = card?.querySelector('.xb-nd-edit');
@@ -271,7 +283,9 @@ export function openImageCardEditor(card, { tags, characterPrompts = [] } = {}) 
     panel.querySelectorAll('textarea.xb-nd-edit-input').forEach(attachPromptHighlight);
     const btns = card.querySelector('.xb-nd-failed-btns');
     if (btns) btns.hidden = true;
-    try { scroll?.querySelector('[data-type="scene"]')?.focus({ preventScroll: true }); } catch { }
+    if (shouldAutoFocusEditor(card.ownerDocument?.defaultView || globalThis)) {
+        try { scroll?.querySelector('[data-type="scene"]')?.focus({ preventScroll: true }); } catch { }
+    }
     return true;
 }
 

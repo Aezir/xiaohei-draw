@@ -6,6 +6,7 @@ import {
     isScenePlannerCorrectionError,
 } from './scene-plan-contract.js';
 import { redactRequestSecrets } from '../../agent-core/adapters/request-inspection.js';
+import { describeConnectionFailureHint, describeErrorWithCause } from '../../agent-core/connection-failure-hint.js';
 import { logScenePlannerDiagnostic, logScenePlannerValidationFailure } from './scene-planner-debug.js';
 import {
     buildProviderAssistantToolCallMessage,
@@ -324,13 +325,16 @@ export const OPENAI_RESPONSES_UNSUPPORTED_HINT = '当前接口类型是 OpenAI R
  * 状态码优先读 error.status，读不到就从信息里找（agent-core 有时只把「500 not implemented」拼进 message）。
  */
 export function describeProviderErrorHint(error, provider) {
-    if (String(provider || '').trim() !== 'openai-responses') return '';
-    const text = [error?.message, typeof error?.body === 'string' ? error.body : '', error?.error?.message, error?.cause?.message]
-        .filter(Boolean).join(' ');
-    const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status ?? error?.cause?.status);
-    const statusMatches = [404, 405, 500, 501].includes(status) || /(?:^|\D)(?:404|405|500|501)(?!\d)/.test(text);
-    if (!statusMatches) return '';
-    return /not[\s_-]*implemented|not[\s_-]*found|unsupported/i.test(text) ? OPENAI_RESPONSES_UNSUPPORTED_HINT : '';
+    const normalizedProvider = String(provider || '').trim();
+    if (normalizedProvider === 'openai-responses') {
+        const text = [error?.message, typeof error?.body === 'string' ? error.body : '', error?.error?.message, error?.cause?.message]
+            .filter(Boolean).join(' ');
+        const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status ?? error?.cause?.status);
+        const statusMatches = [404, 405, 500, 501].includes(status) || /(?:^|\D)(?:404|405|500|501)(?!\d)/.test(text);
+        if (statusMatches && /not[\s_-]*implemented|not[\s_-]*found|unsupported/i.test(text)) return OPENAI_RESPONSES_UNSUPPORTED_HINT;
+    }
+    // 「Connection error.」「Failed to fetch」这类：请求根本没拿到回应，按直连 / 酒馆代发分别说该查什么
+    return describeConnectionFailureHint(error, normalizedProvider);
 }
 
 /**
@@ -354,7 +358,7 @@ function mapProviderError(error, abortScope, upstreamSignal, provider = '') {
     }
     const hint = describeProviderErrorHint(error, provider);
     return new ScenePlannerError(
-        `Provider 请求失败：${error?.message || '未知错误'}${hint ? `。${hint}` : ''}`,
+        `Provider 请求失败：${describeErrorWithCause(error)}${hint ? `。${hint}` : ''}`,
         'PROVIDER_REQUEST_FAILED',
         null,
         { cause: error },

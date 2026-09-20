@@ -171,6 +171,7 @@ const NOOP_HANDLE = Object.freeze({
     agent() {},
     naiPrepared() { return 0; },
     naiResult() {},
+    naiShown() {},
     finish() {},
     fail() {},
 });
@@ -224,6 +225,15 @@ export function beginDrawLog(options = {}) {
                         error: error || classified ? describeError(error, classified) : null,
                         finishedAt: Date.now(),
                     };
+                    return { ...current, nai: { ...current.nai, images } };
+                });
+            },
+            /** 楼层配图：这张图的卡有没有立刻插进楼层、被冲掉后补插了几次（{ immediate, reinserts, misses }） */
+            naiShown(index, shown) {
+                updateEntry(id, (current) => {
+                    const images = [...(current.nai?.images || [])];
+                    if (!images[index]) return null;
+                    images[index] = { ...images[index], shown: { ...(images[index].shown || {}), ...(shown || {}) } };
                     return { ...current, nai: { ...current.nai, images } };
                 });
             },

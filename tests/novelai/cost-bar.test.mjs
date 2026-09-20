@@ -57,11 +57,13 @@ test('复位: vibes beyond 4 are disabled by index', () => {
     assert.deepEqual(plan.apply.disableVibeIndexes, [4, 5]);
 });
 
-test('生成确认: required for V5, approx or paid; not for verified free V4.5', () => {
+test('生成确认: required for approx or paid; not for verified free V4.5; V5 by itself is no longer a reason', () => {
     const view = resolveSubscriptionView(OPUS_DATA);
     const est = c => estimateAnlasCost(c, { subscription: view.subscription });
     assert.equal(needsGenerateConfirm({ estimates: [est(cfg())], models: [V45] }).confirm, false);
-    assert.equal(needsGenerateConfirm({ estimates: [est(cfg({ model: 'nai-diffusion-5-full' }))], models: ['nai-diffusion-5-full'] }).confirm, true);
+    const v5 = needsGenerateConfirm({ estimates: [est(cfg({ model: 'nai-diffusion-5-full' }))], models: ['nai-diffusion-5-full'] });
+    assert.equal(v5.reasons.some(reason => reason.includes('V5')), false);
+    assert.equal(needsGenerateConfirm({ estimates: [{ total: 0, isFree: true, confidence: 'exact' }], models: ['nai-diffusion-5-full'] }).confirm, false);
     assert.equal(needsGenerateConfirm({ estimates: [est(cfg({ steps: 40 }))], models: [V45] }).confirm, true);
     assert.equal(needsGenerateConfirm({ estimates: [estimateAnlasCost(cfg(), { subscription: null })], models: [V45] }).confirm, true);
 });

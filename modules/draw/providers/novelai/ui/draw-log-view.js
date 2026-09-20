@@ -7,6 +7,7 @@ import {
     describeCenter,
     describeEntryFloor,
     describeEntryResult,
+    describeNaiShown,
     describeRenderStatus,
     formatDuration,
     formatLogTime,
@@ -45,6 +46,8 @@ const CSS = `
 .nd-log-block-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .nd-log-block-title.is-bad { color: var(--danger); }
 .nd-log-block-title.is-ok { color: var(--success); }
+.nd-log-block-title .nd-log-shown { font-weight: 400; color: var(--text-muted); }
+.nd-log-block-title .nd-log-shown.is-bad { color: var(--danger); }
 .nd-log-kv { display: grid; grid-template-columns: minmax(64px, auto) minmax(0, 1fr); gap: 3px 10px; font-size: 12px; }
 .nd-log-kv > span:nth-child(odd) { color: var(--text-muted); }
 .nd-log-kv > span:nth-child(even) { color: var(--text-primary); min-width: 0; word-break: break-word; }
@@ -232,6 +235,8 @@ function naiSectionHtml(entry) {
         const ok = image.state === 'ready';
         const stateText = ok ? '成功' : image.state === 'failed' ? '失败' : image.state === 'cancelled' ? '已取消' : '没回结果';
         const errorText = image.error ? `：${[image.error.label, image.error.message].filter(Boolean).join(' · ')}` : '';
+        const shownText = describeNaiShown(image.shown);
+        const shownFine = shownText === '出图即上屏';
         const params = [
             ['模型', req.model || '—'],
             ['尺寸', `${req.width ?? '—'}×${req.height ?? '—'}`],
@@ -247,7 +252,7 @@ function naiSectionHtml(entry) {
             ${character.uc ? promptHtml('负向', character.uc) : ''}
         </div>`).join('');
         return `<div class="nd-log-block">
-            <div class="nd-log-block-title${ok ? ' is-ok' : image.state === 'failed' ? ' is-bad' : ''}">图 ${index + 1} · ${esc(stateText + errorText)}</div>
+            <div class="nd-log-block-title${ok ? ' is-ok' : image.state === 'failed' ? ' is-bad' : ''}">图 ${index + 1} · ${esc(stateText + errorText)}${shownText ? `<span class="nd-log-shown${shownFine ? '' : ' is-bad'}"> · 上屏：${esc(shownText)}</span>` : ''}</div>
             <div class="nd-log-params">${params}</div>
             ${promptHtml('正向提示词', req.positive)}
             ${promptHtml('负向提示词', req.negative)}

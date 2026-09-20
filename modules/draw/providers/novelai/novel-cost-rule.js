@@ -1,7 +1,7 @@
 // novel-cost-rule.js
 // 「生成前要不要二次确认」的唯一口径（纯函数，node 可测）。
 // 设置页底栏（ui/nd-cost-bar.js，原样 re-export）和宿主（novel-draw.js：编辑提示词后重新生成）共用。
-// 规则：估算不为 0（含档位未知 / 手动档位导致的「约」）、参数超限、或模型是 V5，都要先确认。
+// 规则：估算不为 0（含档位未知 / 手动档位导致的「约」）、或参数超限，都要先确认。模型本身不再是理由（V5 的「测试期间」约定已撤）。
 
 import { estimateAnlasCost } from './novel-anlas-pricing.js';
 import { resolveEffectiveSize } from './novel-effective-size.js';
@@ -19,10 +19,9 @@ export function describeCost(estimate) {
     return { text: `${approx ? '约 ' : ''}${estimate.total}`, free, approx, invalid: false };
 }
 
-/** 生成前是否需要二次确认（测试期间：只要不确定免费、或是 V5，就要确认）。 */
-export function needsGenerateConfirm({ estimates = [], models = [] } = {}) {
+/** 生成前是否需要二次确认：只看会不会花 Anlas（不确定免费也算），不看模型。models 参数保留给老调用方。 */
+export function needsGenerateConfirm({ estimates = [] } = {}) {
     const reasons = [];
-    if (models.some(isV5ModelId)) reasons.push('当前是 V5 模型（测试期间约定不用 V5）');
     for (const estimate of estimates) {
         const cost = describeCost(estimate);
         if (cost.invalid) reasons.push('参数超出上限');
