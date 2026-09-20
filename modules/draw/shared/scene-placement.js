@@ -9,13 +9,107 @@ export class ScenePlacementError extends Error {
     }
 }
 
+/** 去掉全部空白的正文 + 每个字对应回原文的下标（按上下文找位置、算改动位置都用它） */
+function compactNarrative(text) {
+    const chars = [];
+    const map = [];
+    const source = String(text ?? '');
+    for (let index = 0; index < source.length; index += 1) {
+        const char = source[index];
+        if (/\s/.test(char)) continue;
+        chars.push(char);
+        map.push(index);
+    }
+    return { compact: chars.join(''), map };
+}
+
+const ANCHOR_LENGTHS = [24, 16, 10, 6];
+
+/**
+ * 叙事真的改了（别的脚本 / 插件在规划期间改写了这楼）时的近似定位：
+ * 先拿插图点前面那一小段字（去空白后 24 → 6 个字逐级缩短）去新正文里找，找到就插在它后面；
+ * 前面那段被改了就换插图点后面那段找，找到就插在它前面；两头都找不到才放到叙事末尾。
+ * 位置单调不回头，多张图不会乱序。
+ */
+function rebaseApproximately(list, from, to, toHash) {
+    const fromC = compactNarrative(from);
+    const toC = compactNarrative(to);
+    const tail = findNarrativeTailOffset(to);
+    let lastCompact = 0;
+    const relocated = { anchor: 0, tail: 0 };
+    const placements = list.map((placement) => {
+        if (placement?.mode !== 'source') return placement;
+        const offset = Number(placement.offset) || 0;
+        let before = 0;
+        while (before < fromC.map.length && fromC.map[before] < offset) before += 1;
+        if (before === 0) { relocated.anchor += 1; return { ...placement, offset: 0, sourceHash: toHash }; }
+        const locate = (anchor) => {
+            const found = toC.compact.indexOf(anchor, lastCompact);
+            return found >= 0 ? found : toC.compact.indexOf(anchor);
+        };
+        for (const length of ANCHOR_LENGTHS) {
+            const anchor = fromC.compact.slice(Math.max(0, before - length), before);
+            if (anchor.length < Math.min(length, 4)) continue;
+            const found = locate(anchor);
+            if (found < 0) continue;
+            const endCompact = found + anchor.length;
+            lastCompact = Math.max(lastCompact, endCompact);
+            relocated.anchor += 1;
+            return { ...placement, offset: toC.map[endCompact - 1] + 1, sourceHash: toHash };
+        }
+        for (const length of ANCHOR_LENGTHS) {
+            const anchor = fromC.compact.slice(before, before + length);
+            if (anchor.length < Math.min(length, 4)) continue;
+            const found = locate(anchor);
+            if (found < 0) continue;
+            lastCompact = Math.max(lastCompact, found);
+            relocated.anchor += 1;
+            return { ...placement, offset: toC.map[found], sourceHash: toHash };
+        }
+        relocated.tail += 1;
+        return { ...placement, mode: 'tail', offset: tail, sourceHash: toHash };
+    });
+    return { rebased: true, approximate: true, relocated, placements };
+}
+
+/**
+ * 两份正文（去空白后）哪里不一样：从第几个字起、删了什么、加了什么。给日志 / 提示用，不参与定位。
+ */
+export function describeNarrativeChange(fromText, toText, { snippet = 40 } = {}) {
+    const from = compactNarrative(fromText).compact;
+    const to = compactNarrative(toText).compact;
+    if (from === to) return null;
+    let prefix = 0;
+    while (prefix < from.length && prefix < to.length && from[prefix] === to[prefix]) prefix += 1;
+    let suffix = 0;
+    while (suffix < from.length - prefix && suffix < to.length - prefix
+        && from[from.length - 1 - suffix] === to[to.length - 1 - suffix]) suffix += 1;
+    const clip = (text) => (text.length > snippet ? `${text.slice(0, snippet)}…（共 ${text.length} 字）` : text);
+    return {
+        fromLength: from.length,
+        toLength: to.length,
+        changedAt: prefix,
+        removed: clip(from.slice(prefix, from.length - suffix)),
+        added: clip(to.slice(prefix, to.length - suffix)),
+    };
+}
+
+export function formatNarrativeChange(change) {
+    if (!change) return '';
+    const parts = [];
+    if (change.removed) parts.push(`删了「${change.removed}」`);
+    if (change.added) parts.push(`加了「${change.added}」`);
+    return `第 ${change.changedAt + 1} 个字起${parts.length ? parts.join('、') : '有改动'}（去空白后 ${change.fromLength} → ${change.toLength} 字）`;
+}
+
 /**
  * 把按 fromText 规划的 placements 挪到 toText 上。两份文本都是去掉图片槽位后的正文。
  * - 文本相同：原样返回；
  * - 只差 MVU 临时标记（<StatusPlaceHolderImpl/>、<UpdateVariable> 块、尾部空白）：offset 映射到新正文的同一叙事位置；
- * - 叙事内容变了：抛 SCENE_SOURCE_CHANGED，和以前一样拒绝写入。
+ * - 叙事内容变了：默认按上下文近似定位（approximate: true，relocated 记按锚点 / 放末尾各几张）；
+ *   allowApproximate: false 时和以前一样抛 SCENE_SOURCE_CHANGED 拒绝写入。
  */
-export function rebaseScenePlacements(placements, fromText, toText) {
+export function rebaseScenePlacements(placements, fromText, toText, { allowApproximate = true } = {}) {
     const from = String(fromText ?? '');
     const to = String(toText ?? '');
     const list = Array.isArray(placements) ? placements : [];
@@ -29,15 +123,18 @@ export function rebaseScenePlacements(placements, fromText, toText) {
         list.forEach(assertOwned);
         return { placements: list.slice(), rebased: false };
     }
+    list.forEach(assertOwned);
+    const toHash = hashSceneSource(to);
     const mapOffset = createNarrativeOffsetMapper(from, to);
     if (!mapOffset) {
-        throw new ScenePlacementError('正文已在场景规划后发生变化，已拒绝写入图片占位符。', 'SCENE_SOURCE_CHANGED');
+        if (!allowApproximate) {
+            throw new ScenePlacementError('正文已在场景规划后发生变化，已拒绝写入图片占位符。', 'SCENE_SOURCE_CHANGED');
+        }
+        return rebaseApproximately(list, from, to, toHash);
     }
-    const toHash = hashSceneSource(to);
     return {
         rebased: true,
         placements: list.map((placement) => {
-            assertOwned(placement);
             if (placement?.mode !== 'source') return placement;
             return { ...placement, offset: mapOffset(placement.offset), sourceHash: toHash };
         }),

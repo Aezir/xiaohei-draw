@@ -172,6 +172,7 @@ const NOOP_HANDLE = Object.freeze({
     naiPrepared() { return 0; },
     naiResult() {},
     naiShown() {},
+    note() {},
     finish() {},
     fail() {},
 });
@@ -236,6 +237,12 @@ export function beginDrawLog(options = {}) {
                     images[index] = { ...images[index], shown: { ...(images[index].shown || {}), ...(shown || {}) } };
                     return { ...current, nai: { ...current.nai, images } };
                 });
+            },
+            /** 备注（正文被改写后的近似定位之类），多条用「；」接起来 */
+            note(text) {
+                const value = String(text || '').trim();
+                if (!value) return;
+                updateEntry(id, current => ({ ...current, note: current.note ? `${current.note}；${value}` : value }));
             },
             finish(result) {
                 updateEntry(id, current => finishEntryFromResult(current, result));

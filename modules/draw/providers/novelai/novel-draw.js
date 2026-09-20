@@ -167,6 +167,8 @@ import {
     insertScenePlacementsPreservingSlots,
     isSceneSlotAlive,
     rebaseScenePlacements,
+    describeNarrativeChange,
+    formatNarrativeChange,
     removeSceneSlotPlaceholders,
     setActiveMessageText,
 } from '../../shared/scene-placement.js';
@@ -2934,9 +2936,11 @@ async function runGenerateAndInsertImages({
             placement,
             content: createPlaceholder(slotIds[index]),
         })), { block: true });
+        let approximateNotified = false;
         const rebaseOntoCurrentText = () => {
             const currentText = message.mes;
             const currentSource = normalizeMessageSceneSourceText(currentText);
+            const placementSourceTextBefore = placementSourceText;
             const rebased = rebaseScenePlacements(placements, placementSourceText, currentSource);
             const nextOriginal = currentText;
             const previousOriginal = originalMes;
@@ -2957,7 +2961,19 @@ async function runGenerateAndInsertImages({
                 placementLifecycle.originalMes = originalMes;
                 placementLifecycle.plannedMes = plannedMes;
             }
-            if (rebased.rebased) console.info('[NovelDraw] 正文尾部标记被改写（变量卡），插图位置已映射到新正文');
+            if (rebased.approximate) {
+                // 别的脚本 / 插件在规划期间改写了这楼的叙事：不再整批拒绝，按上下文重新定位，找不到的放末尾
+                const change = formatNarrativeChange(describeNarrativeChange(placementSourceTextBefore, currentSource));
+                const where = [rebased.relocated.anchor ? `${rebased.relocated.anchor} 张按上下文重新定位` : '', rebased.relocated.tail ? `${rebased.relocated.tail} 张放到末尾` : ''].filter(Boolean).join('，');
+                console.warn(`[NovelDraw] 正文在规划后被改写：${change}；${where}`);
+                drawLog?.note?.(`正文在规划后被改写：${change}；${where}`);
+                if (!approximateNotified) {
+                    approximateNotified = true;
+                    try { toastr.warning(`这楼的正文在配图期间被改过，${where}`, '小黑生图'); } catch { /* 无 toastr */ }
+                }
+            } else if (rebased.rebased) {
+                console.info('[NovelDraw] 正文尾部标记被改写（变量卡），插图位置已映射到新正文');
+            }
             return rebased.rebased;
         };
         const tryRebaseOntoCurrentText = () => {

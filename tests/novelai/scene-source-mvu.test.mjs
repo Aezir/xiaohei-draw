@@ -5,6 +5,8 @@ import fs from 'node:fs';
 
 import { createSceneSource, findNarrativeTailOffset } from '../../modules/draw/shared/scene-source.js';
 import {
+    describeNarrativeChange,
+    formatNarrativeChange,
     insertScenePlacementsPreservingSlots,
     rebaseScenePlacements,
 } from '../../modules/draw/shared/scene-placement.js';
@@ -134,17 +136,47 @@ test('额外模型解析追加 <UpdateVariable>、占位符挪位、CRLF 尾部�
     assert.ok(result.includes('“有人来过。”她低声说。\n[image:a]'), result);
 });
 
-test('真正改了正文：仍然 SCENE_SOURCE_CHANGED', () => {
+test('真正改了正文：默认按上下文近似定位；allowApproximate: false 才拒绝', () => {
     const { placements } = planAt(NARRATIVE, [2]);
     const edited = NARRATIVE.replace('脚印', '血迹');
     assert.throws(
-        () => rebaseScenePlacements(placements, NARRATIVE, `${edited}\n\n${PLACEHOLDER}`),
+        () => rebaseScenePlacements(placements, NARRATIVE, `${edited}\n\n${PLACEHOLDER}`, { allowApproximate: false }),
         error => error.code === 'SCENE_SOURCE_CHANGED',
     );
-    assert.throws(
-        () => rebaseScenePlacements(placements, NARRATIVE, `${NARRATIVE}\n\n新加的一句。`),
-        error => error.code === 'SCENE_SOURCE_CHANGED',
-    );
+    // 插图点 2 正好在被改的「脚印」后面：前面找不到就用后面那句定位，图仍插在「血迹。」和「有人来过」之间
+    const moved = rebaseScenePlacements(placements, NARRATIVE, `${edited}\n\n${PLACEHOLDER}`);
+    assert.equal(moved.approximate, true);
+    assert.deepEqual(moved.relocated, { anchor: 1, tail: 0 });
+    assert.match(insert(`${edited}\n\n${PLACEHOLDER}`, moved.placements), /血迹。\n\n\[image:a\]\n“有人来过/);
+    // 改的词不在插图点旁边：按前面那句定位
+    const three = planAt(NARRATIVE, [3]);
+    const kept = rebaseScenePlacements(three.placements, NARRATIVE, edited);
+    assert.deepEqual(kept.relocated, { anchor: 1, tail: 0 });
+    assert.match(insert(edited, kept.placements), /她低声说。\n\[image:a\]\n/);
+    // 末尾加了一句：位置照旧
+    const appended = rebaseScenePlacements(placements, NARRATIVE, `${NARRATIVE}\n\n新加的一句。`);
+    assert.equal(appended.approximate, true);
+    assert.match(insert(`${NARRATIVE}\n\n新加的一句。`, appended.placements), /她低声说。\n\[image:a\]\n\n远处传来钟声。\n\n新加的一句。/);
+    // 插图点前面那句整段被删：找不到锚点，放到叙事末尾（状态栏占位符之前）
+    const gutted = '完全不同的开头。\n\n结尾也换了。';
+    const tail = rebaseScenePlacements(placements, NARRATIVE, `${gutted}\n\n${PLACEHOLDER}`);
+    assert.deepEqual(tail.relocated, { anchor: 0, tail: 1 });
+    assert.equal(tail.placements[0].mode, 'tail');
+    assert.match(insert(`${gutted}\n\n${PLACEHOLDER}`, tail.placements), /结尾也换了。\n\[image:a\]\n\n<StatusPlaceHolderImpl\/>/);
+    // 多张图：单调不乱序
+    const two = planAt(NARRATIVE, [1, 2]);
+    const both = rebaseScenePlacements(two.placements, NARRATIVE, edited);
+    assert.ok(both.placements[0].offset < both.placements[1].offset);
+});
+
+test('改动描述：从第几个字起、删了什么、加了什么', () => {
+    const change = describeNarrativeChange(NARRATIVE, NARRATIVE.replace('脚印', '血迹'));
+    assert.equal(change.removed, '脚印');
+    assert.equal(change.added, '血迹');
+    assert.match(formatNarrativeChange(change), /^第 \d+ 个字起删了「脚印」、加了「血迹」/);
+    assert.equal(describeNarrativeChange('a b', 'ab'), null);
+    const long = describeNarrativeChange('开头。', `开头。${'很长的一句话'.repeat(20)}`);
+    assert.match(long.added, /…（共 \d+ 字）$/);
 });
 
 test('正文没变：原样返回；placement 属于别的正文：拒绝', () => {

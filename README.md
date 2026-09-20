@@ -46,6 +46,7 @@ https://github.com/Aezir/xiaohei-draw
 
 ## 自己的改动记录（重跑拆分脚本前先看这里）
 
+- 2026-09-20 正文在规划后被改写不再整批拒绝（「正文已在场景规划后发生变化，已拒绝写入图片占位符」）：`scene-placement.js` 的 `rebaseScenePlacements` 在叙事真的变了时按上下文近似定位——拿插图点前面去空白的 24 → 6 个字去新正文里找，找到就插在它后面，找不到（那段被删了）就放到叙事末尾（`mode: 'tail'`），位置单调不乱序；返回 `approximate: true` 和 `relocated: { anchor, tail }`，`allowApproximate: false` 保留旧的拒绝行为。新增 `describeNarrativeChange` / `formatNarrativeChange`（第几个字起删了什么加了什么）。`novel-draw.js` 近似定位时 toastr 警告一次、`drawLog.note()` 记进日志备注（`draw-log-store.js` 新增 `note`）。测试 `scene-source-mvu.test.mjs` 改对应用例。
 - 2026-09-20 长按面板 →「编辑提示词」在触屏上不再自动聚焦场景输入框（键盘不会自己弹起来）：`chat-image-card.js` 新增 `shouldAutoFocusEditor(win)`，`(pointer: coarse)` 或 `(hover: none)` 命中就不 focus，鼠标设备照旧；失败卡的「编辑提示词」按钮走同一函数。测试 `chat-image-ui.test.mjs` 加用例。
 - 2026-09-20 场景 Agent 设置：官方渠道并进 Provider 下拉、Base URL 去掉 datalist；生成前确认不再拿 V5 当理由：
   - `agent-core/ui/settings-markup.js` 的 Base URL 输入框去掉 `list=` 和 `<datalist>`（手机上一点输入框就弹一排选项挡住键盘），占位改成 `https://…/v1`。Provider 下拉末尾加 `<optgroup>`「官方渠道」（DeepSeek、智谱、Kimi、硅基流动、通义、豆包、MiniMax、OpenRouter），清单在新文件 `agent-core/ui/vendor-presets.js`；选中后 `settings-panel.js` 把通道切成「酒馆 OpenAI 兼容」并填上官方地址（Key / 模型保留该通道原来的值），下拉随即显示为「酒馆 OpenAI 兼容」。
