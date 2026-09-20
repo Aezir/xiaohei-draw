@@ -156,13 +156,13 @@ test('真正改了正文：默认按上下文近似定位；allowApproximate: fa
     // 末尾加了一句：位置照旧
     const appended = rebaseScenePlacements(placements, NARRATIVE, `${NARRATIVE}\n\n新加的一句。`);
     assert.equal(appended.approximate, true);
-    assert.match(insert(`${NARRATIVE}\n\n新加的一句。`, appended.placements), /她低声说。\n\[image:a\]\n\n远处传来钟声。\n\n新加的一句。/);
+    assert.match(insert(`${NARRATIVE}\n\n新加的一句。`, appended.placements), /脚印。\n\[image:a\]\n\n“有人来过。”她低声说。\n\n远处传来钟声。\n\n新加的一句。/);
     // 插图点前面那句整段被删：找不到锚点，放到叙事末尾（状态栏占位符之前）
     const gutted = '完全不同的开头。\n\n结尾也换了。';
     const tail = rebaseScenePlacements(placements, NARRATIVE, `${gutted}\n\n${PLACEHOLDER}`);
     assert.deepEqual(tail.relocated, { anchor: 0, tail: 1 });
     assert.equal(tail.placements[0].mode, 'tail');
-    assert.match(insert(`${gutted}\n\n${PLACEHOLDER}`, tail.placements), /结尾也换了。\n\[image:a\]\n\n<StatusPlaceHolderImpl\/>/);
+    assert.match(insert(`${gutted}\n\n${PLACEHOLDER}`, tail.placements), /结尾也换了。\n\n\[image:a\]\n<StatusPlaceHolderImpl\/>/);
     // 多张图：单调不乱序
     const two = planAt(NARRATIVE, [1, 2]);
     const both = rebaseScenePlacements(two.placements, NARRATIVE, edited);
