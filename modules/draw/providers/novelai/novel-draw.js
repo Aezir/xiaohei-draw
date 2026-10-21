@@ -3328,7 +3328,10 @@ async function runGenerateAndInsertImages({
                 }
             }
             if (canCommit) {
-                persistChatSilently().catch(() => {});
+                // 停止只取消剩余请求，已交付图片仍要保存进正文；保存完成前保留任务锁。
+                await persistChatSilently().catch(error => {
+                    console.warn('[NovelDraw] 停止后保存已生成图片失败:', error);
+                });
             }
 
             placementLifecycle.settled = true;

@@ -9,12 +9,13 @@ import { createSerialImageRequestQueue } from '../../modules/draw/shared/serial-
 // Execute the real batch and chat orchestration without loading SillyTavern or contacting NAI.
 const source = fs.readFileSync(new URL('../../modules/draw/providers/novelai/novel-draw.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 function functionSource(name) {
-    const start = source.indexOf(`async function ${name}(`);
+    let start = source.indexOf(`async function ${name}(`);
+    if (start < 0) start = source.indexOf(`function ${name}(`);
     assert.ok(start >= 0);
     return source.slice(start, source.indexOf('\n}\n', start) + 2);
 }
 
-function harness({ failed = [1], failureStoreThrows = false, failureRenderThrows = false } = {}) {
+function harness({ failed = [1], failureStoreThrows = false, failureRenderThrows = false, onRequest, onStore, persist } = {}) {
     const message = { mes: '第一幕。第二幕。第三幕。' };
     const ctx = { chatId: 'test-chat', chat: [message] };
     const requests = [], records = new Map(), selections = new Map(), cards = new Map(), saved = [];
@@ -29,7 +30,7 @@ function harness({ failed = [1], failureStoreThrows = false, failureRenderThrows
         moduleInitialized: true, mvuActivityTracker: null,
         ErrorType: { AUTH: {}, ABORTED: {}, PARSE: {} }, ImageState: { PREVIEW: 'preview' },
         DEFAULT_SETTINGS: { timeout: 1000 }, DEFAULT_MESSAGE_FILTER_RULES: [],
-        createGenerationJob: () => ({ controller: new AbortController() }), releaseGenerationJob() {},
+        AbortController, generationJobs: new Map(),
         loadSettings: async () => {}, loadSharedDrawSettings: async () => {},
         getContext: () => ctx, getChatCharacterName: () => 'test', isMessageBeingEdited: () => false,
         getRuntimeSettings: () => ({ apiKey: 'test', sendMode: 'frontend' }),
@@ -58,15 +59,16 @@ function harness({ failed = [1], failureStoreThrows = false, failureRenderThrows
         }),
         snapshotNovelRequestConfig: settings => settings,
         enqueueImageRequest: (run, options) => queue.enqueue(run, options),
-        executePreparedNovelRequest: async prepared => {
+        executePreparedNovelRequest: async (prepared, config, signal) => {
             const index = requests.length;
             requests.push(prepared.payload.scene);
+            await onRequest?.({ index, signal });
             if (failed.includes(index)) throw new Error(`NAI failed ${index}`);
             return `image-${index}`;
         },
         handleFetchError: error => error,
         classifyError: error => ({ code: 'network', label: '网络', desc: error.message }),
-        storePreview: async record => { records.set(record.imgId, record); },
+        storePreview: async record => { await onStore?.(record); records.set(record.imgId, record); },
         storeFailedPlaceholder: async record => {
             if (failureStoreThrows) throw new Error('failure record write failed');
             records.set(record.imgId, { ...record, status: 'failed' });
@@ -75,12 +77,72 @@ function harness({ failed = [1], failureStoreThrows = false, failureRenderThrows
         clearSlotSelection: async slotId => { selections.delete(slotId); },
         deletePreview: async imgId => { records.delete(imgId); },
         buildNovelGenerationSnapshot: () => ({}), getPreviewDisplayUrl: () => 'data:image/png;base64,test',
-        persistChatSilently: async () => { saved.push(message.mes); }, guardCommittedSlotsAgainstMvu() {},
+        persistChatSilently: async () => { await persist?.(message.mes); saved.push(message.mes); },
+        guardCommittedSlotsAgainstMvu() {},
     };
     vm.createContext(deps);
-    vm.runInContext(`${functionSource('runNovelImageBatch')}\n${functionSource('runGenerateAndInsertImages')}`, deps);
-    return { run: () => deps.runGenerateAndInsertImages({ messageId: 0 }), message, requests, records, cards, saved };
+    for (const name of ['createGenerationJob', 'releaseGenerationJob', 'abortGeneration', 'runNovelImageBatch', 'runGenerateAndInsertImages']) {
+        vm.runInContext(functionSource(name), deps);
+    }
+    return { run: () => deps.runGenerateAndInsertImages({ messageId: 0 }), stop: () => deps.abortGeneration(0),
+        message, requests, records, cards, saved, jobs: deps.generationJobs };
 }
+
+for (const completed of [0, 1, 2]) {
+test(`stop after ${completed} completed images retains them and cancels all remaining requests`, async () => {
+    let requestAborted = false;
+    const h = harness({ failed: [], onRequest: ({ index, signal }) => {
+        if (index !== completed) return;
+        signal.addEventListener('abort', () => { requestAborted = true; }, { once: true });
+        assert.equal(h.stop(), true);
+        throw new Error('request aborted');
+    } });
+    const result = await h.run();
+    assert.equal(requestAborted, true);
+    assert.equal(result.aborted, true);
+    assert.equal(result.success, completed);
+    assert.equal(result.results.length, completed);
+    assert.equal(h.requests.length, completed + 1, 'no request may start after cancellation');
+    assert.equal(h.records.size, completed, 'cancelled items must not become failure records');
+    assert.equal(h.cards.size, completed);
+    assert.equal((h.message.mes.match(/\[image:/g) || []).length, completed);
+    for (const item of result.results) assert.ok(h.saved.at(-1).includes(`[image:${item.slotId}]`));
+});
+}
+
+test('stop while storing a completed response still commits that image', async () => {
+    const h = harness({ failed: [], onStore: () => { h.stop(); } });
+    const result = await h.run();
+    assert.equal(result.aborted, true);
+    assert.equal(result.success, 1);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.records.size, 1);
+    assert.equal(h.cards.size, 1);
+    assert.ok(h.saved.at(-1).includes(`[image:${result.results[0].slotId}]`));
+});
+
+test('stop does not finish or release the job until retained images are saved to chat', async () => {
+    let savingStarted, finishSave;
+    const saving = new Promise(resolve => { savingStarted = resolve; });
+    const gate = new Promise(resolve => { finishSave = resolve; });
+    const h = harness({ failed: [], onStore: () => { h.stop(); }, persist: async () => {
+        savingStarted();
+        await gate;
+    } });
+    let finished = false;
+    const running = h.run().then(result => { finished = true; return result; });
+    await saving;
+    await new Promise(resolve => setImmediate(resolve));
+    try {
+        assert.equal(finished, false, 'saving retained images must be awaited');
+        assert.equal(h.jobs.size, 1, 'prevent a new job from racing the unfinished save');
+    } finally {
+        finishSave();
+        await running;
+    }
+    assert.equal(h.saved.length, 1);
+    assert.equal(h.jobs.size, 0);
+});
 
 for (const failed of [[0], [1], [2], [0, 1, 2], []]) {
     test(`batch settles and commits each slot independently (failed: ${failed})`, async () => {
