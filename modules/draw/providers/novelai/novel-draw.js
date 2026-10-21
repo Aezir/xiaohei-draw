@@ -1823,6 +1823,15 @@ async function runNovelImageBatch({
         try { classified = error ? classifyError(error) : null; } catch { /* ignore */ }
         drawLog.naiResult(logOffset + index, { state, error, classified });
     };
+    const settleItem = async (item) => {
+        try {
+            await onItemSettled?.(item);
+        } catch (error) {
+            // 失败记录或失败卡自身出错，只影响这一项，不能截断后续已排队的图片。
+            console.error(`[NovelDraw] 图${item.index + 1} 失败结果处理异常，继续队列:`, error);
+            drawLog?.note?.(`图${item.index + 1} 失败结果处理异常：${error?.message || error}`);
+        }
+    };
 
     if (transportMode !== 'frontend') {
         let backendStatus;
@@ -1845,7 +1854,7 @@ async function runNovelImageBatch({
                 const error = new NovelDrawError('已取消', ErrorType.ABORTED);
                 outcomes[pending] = { state: 'cancelled', error };
                 logResult(pending, 'cancelled');
-                await onItemSettled?.({ index: pending, state: 'cancelled', error, source: 'frontend', logIndex: logOffset + pending });
+                await settleItem({ index: pending, state: 'cancelled', error, source: 'frontend', logIndex: logOffset + pending });
             }
             break;
         }
@@ -1878,7 +1887,7 @@ async function runNovelImageBatch({
             const state = signal?.aborted ? 'cancelled' : 'failed';
             outcomes[index] = { state, error: normalized };
             logResult(index, state, state === 'failed' ? normalized : null);
-            await onItemSettled?.({ index, state, error: normalized, source: 'frontend', logIndex: logOffset + index });
+            await settleItem({ index, state, error: normalized, source: 'frontend', logIndex: logOffset + index });
         }
     }
     return { mode: requestConfig.sendMode, outcomes, aborted: signal?.aborted === true };
@@ -3273,6 +3282,7 @@ async function runGenerateAndInsertImages({
             },
             onItemSettled: async ({ index, state, error, guard = async () => {}, logIndex = null }) => {
                 if (state === 'cancelled') return;
+                requiresFinalDomSync = true;
                 // 失败记录是持久事实，不能被渲染守卫挡掉：聊天切走了、楼层正在编辑，
                 // 都不改变「这张图失败了」，用户回来时必须看到失败卡而不是一个空占位符。
                 const errorType = await recordSlotFailure(index, error, guard);
@@ -3369,13 +3379,14 @@ async function runGenerateAndInsertImages({
         }
         if (!placementLifecycle.committedEarly) {
             try {
+                const settledSlotIds = results.filter(Boolean).map(item => item.slotId);
                 const committedText = await commitSceneSlotReplacement({
                     message,
-                    stagedText: plannedMes,
+                    stagedText: commitSettledScenePlacements(plannedMes, { allSlotIds: slotIds, settledSlotIds }),
                     replacedSlotIds,
                     persist: persistChatSilently,
                 });
-                if (replacedSlotIds.length > 0) requiresFinalDomSync = true;
+                if (replacedSlotIds.length > 0 || settledSlotIds.length < slotIds.length) requiresFinalDomSync = true;
                 guardCommittedSlotsAgainstMvu({
                     messageId,
                     message,
